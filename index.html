@@ -189,7 +189,13 @@
     </div>
 
     <button id="myGps" class="btn-gps">내 GPS 위치 찾기</button>
-    <button id="gpsToA" style="width:100%; margin-bottom:6px; background:#e9f7ef; color:#1e7e34; border-color:#28a745; display:none;">현재 GPS 좌표를 A로 지정</button>
+    <div id="gpsActionGroup" style="display:none; margin-bottom:6px;">
+      <div style="display:flex; gap:3px; margin-bottom:4px;">
+        <button id="gpsToA" class="btn-half" style="background:#e9f7ef; color:#1e7e34; border-color:#28a745; font-weight:bold;">GPS → A 지정</button>
+        <button id="gpsToB" class="btn-half" style="background:#e7f1ff; color:#0056b3; border-color:#007bff; font-weight:bold;">GPS → B 지정</button>
+      </div>
+      <button id="clearGps" style="width:100%; background:#f8f9fa; color:#555; border-color:#adb5bd;">GPS 수신 해제</button>
+    </div>
     <button id="toggleRoadLayer" style="width:100%; margin-bottom:6px; background:#f0f4f8; color:#0056b3; border-color:#0056b3; font-weight:bold;">한국어 도로/지명: ON</button>
     <button id="checkLOS" class="btn-los">정밀 단면 분석 (DEM 직독)</button>
     <div class="signature" id="appSignature"></div>
@@ -480,7 +486,7 @@
           if (markerGps) map.removeLayer(markerGps);
           markerGps = L.circleMarker(latlng, {radius:8, color:'#ffcc00', fillColor:'#ffff00', fillOpacity:0.8, weight:3}).addTo(map);
           map.setView(latlng, 15);
-          document.getElementById('gpsToA').style.display = 'block';
+          document.getElementById('gpsActionGroup').style.display = 'block';
         },
         () => {
           btnGps.innerText = "내 GPS 위치 찾기";
@@ -491,6 +497,12 @@
     };
 
     document.getElementById('gpsToA').onclick = () => { if (gpsCoord) { updateA(gpsCoord); alert("현재 GPS 위치가 Point A로 지정되었습니다."); } };
+    document.getElementById('gpsToB').onclick = () => { if (gpsCoord) { updateB(gpsCoord); alert("현재 GPS 위치가 Point B로 지정되었습니다."); } };
+    document.getElementById('clearGps').onclick = () => {
+      if (markerGps) { map.removeLayer(markerGps); markerGps = null; }
+      gpsCoord = null;
+      document.getElementById('gpsActionGroup').style.display = 'none';
+    };
     document.getElementById('stopAnalysis').onclick = () => { isCancelled = true; document.getElementById('loading-overlay').style.display = 'none'; };
 
     function latLngToTilePixel(lat, lng, zoom) {
