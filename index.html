@@ -1,9 +1,10 @@
+
 <!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Doha Los (v3.6)</title>
+  <title>Doha LOS Mobile - v3.6</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
   <style>
     html, body { height: 100%; margin: 0; padding: 0; background: #000; overflow: hidden; }
@@ -176,7 +177,7 @@
     <button id="gpsToA" style="width:100%; margin-bottom:6px; background:#e9f7ef; color:#1e7e34; border-color:#28a745; display:none;">현재 GPS 좌표를 A로 지정</button>
     <button id="toggleRoadLayer" style="width:100%; margin-bottom:6px; background:#f0f4f8; color:#0056b3; border-color:#0056b3; font-weight:bold;">한국어 도로/지명: ON</button>
     <button id="checkLOS" class="btn-los">정밀 단면 분석 (DEM 직독)</button>
-    <div class="signature">Doha Los (v3.6)<br>8기동사단 60기보여단 전송반장 중사 임도현<br>불펌 및 무단수정 금지</div>
+    <div class="signature">Doha Los (v3.6 · <span id="lastUpdateDate">26.11.19.</span>)<br>8기동사단 60기보여단 전송반장 중사 임도현<br>불펌 및 무단수정 금지</div>
     <div class="resize-handle" id="resizeHandle" title="드래그하여 크기 조절"></div>
   </div>
 </div>
@@ -224,7 +225,35 @@
   let closeProfilePopup;
   let clearPointC;
 
+  // GitHub 저장소 최신 커밋 날짜 자동 연동
+  async function syncGithubUpdateDate() {
+    const dateSpan = document.getElementById('lastUpdateDate');
+    if (!dateSpan) return;
+    try {
+      let owner = 'crafting3750';
+      let repo = 'Doha-Los';
+      if (window.location.hostname.endsWith('.github.io')) {
+        owner = window.location.hostname.split('.')[0];
+        const pathSegments = window.location.pathname.split('/').filter(Boolean);
+        if (pathSegments.length > 0) repo = pathSegments[0];
+      }
+      const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits?per_page=1`);
+      if (!res.ok) return;
+      const commits = await res.json();
+      if (commits && commits.length > 0 && commits[0].commit && commits[0].commit.committer) {
+        const d = new Date(commits[0].commit.committer.date);
+        const yy = String(d.getFullYear()).slice(-2);
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        dateSpan.innerText = `${yy}.${mm}.${dd}.`;
+      }
+    } catch (e) {
+      // 오프라인 또는 호출 제한 시 기본 날짜 유지
+    }
+  }
+
   window.onload = function() {
+    syncGithubUpdateDate();
     const controlWrapper = document.getElementById('controlWrapper');
     const resizeHandle = document.getElementById('resizeHandle');
     const baseWidth = 215;
@@ -266,6 +295,7 @@
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Esri' }).addTo(map);
 
     const googleRoadOverlay = L.tileLayer('https://mt1.google.com/vt/lyrs=h&hl=ko&x={x}&y={y}&z={z}', { attribution: 'Google', maxZoom: 20, zIndex: 500 }).addTo(map);
+
     let isRoadVisible = true;
     document.getElementById('toggleRoadLayer').onclick = function() {
       if (isRoadVisible) {
@@ -582,7 +612,7 @@
 
       ctx.clearRect(0, 0, W, H);
       
-      // 지형 배경
+      // 1. 지형 배경
       ctx.beginPath();
       ctx.fillStyle = "rgba(40, 167, 69, 0.18)";
       curvedElevations.forEach((e, i) => {
@@ -593,7 +623,7 @@
       ctx.lineTo(W, H); ctx.lineTo(0, H);
       ctx.fill();
 
-      // 지형 선
+      // 2. 지형 선
       ctx.beginPath();
       ctx.strokeStyle = "#2e7d32";
       ctx.lineWidth = 2.5;
@@ -604,7 +634,7 @@
       });
       ctx.stroke();
 
-      // 10m 안테나 마스트 및 LOS 계산
+      // 3. 10m 안테나 마스트 및 가시선(LOS) 계산
       const antennaHeight = 10;
       const curvedElevA_Antenna = curvedElevations[0] + antennaHeight;
       const curvedElevB_Antenna = curvedElevations[N - 1] + antennaHeight;
@@ -709,7 +739,7 @@
           pointMgrs = "좌표 계산 불가";
         }
 
-        // A -> C 구간 차폐 여부 검사
+        // A -> C 구간 차폐 여부 검사 (A안테나 탑에서 C지점 지형까지)
         let blockedFromA = false;
         if (activeIndex > 0) {
           const antennaA_Y = antennaStartY;
@@ -722,7 +752,7 @@
           }
         }
 
-        // C -> B 구간 차폐 여부 검사
+        // C -> B 구간 차폐 여부 검사 (C지점 지형에서 B안테나 탑까지)
         let blockedFromB = false;
         if (activeIndex < N - 1) {
           const startIdx = activeIndex;
