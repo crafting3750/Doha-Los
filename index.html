@@ -4,7 +4,22 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Doha LOS Mobile - v3.6</title>
+  <title>Doha LOS Mobile - v3.7</title>
+
+  <!-- ===================================================================== -->
+  <!-- ★ [사용자 설정 영역] 버전, 업데이트 날짜, 제작자 정보는 여기서 수정하세요 ★ -->
+  <!-- ===================================================================== -->
+  <script>
+    const APP_CONFIG = {
+      appName: "Doha Los",
+      version: "v3.7",
+      lastUpdate: "26.11.19.",
+      author: "8기동사단 60기보여단 전송반장 중사 임도현",
+      notice: "불펌 및 무단수정 금지"
+    };
+  </script>
+  <!-- ===================================================================== -->
+
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
   <style>
     html, body { height: 100%; margin: 0; padding: 0; background: #000; overflow: hidden; }
@@ -177,7 +192,7 @@
     <button id="gpsToA" style="width:100%; margin-bottom:6px; background:#e9f7ef; color:#1e7e34; border-color:#28a745; display:none;">현재 GPS 좌표를 A로 지정</button>
     <button id="toggleRoadLayer" style="width:100%; margin-bottom:6px; background:#f0f4f8; color:#0056b3; border-color:#0056b3; font-weight:bold;">한국어 도로/지명: ON</button>
     <button id="checkLOS" class="btn-los">정밀 단면 분석 (DEM 직독)</button>
-    <div class="signature">Doha Los (v3.6 · <span id="lastUpdateDate">26.11.19.</span>)<br>8기동사단 60기보여단 전송반장 중사 임도현<br>불펌 및 무단수정 금지</div>
+    <div class="signature" id="appSignature"></div>
     <div class="resize-handle" id="resizeHandle" title="드래그하여 크기 조절"></div>
   </div>
 </div>
@@ -225,35 +240,13 @@
   let closeProfilePopup;
   let clearPointC;
 
-  // GitHub 저장소 최신 커밋 날짜 자동 연동
-  async function syncGithubUpdateDate() {
-    const dateSpan = document.getElementById('lastUpdateDate');
-    if (!dateSpan) return;
-    try {
-      let owner = 'crafting3750';
-      let repo = 'Doha-Los';
-      if (window.location.hostname.endsWith('.github.io')) {
-        owner = window.location.hostname.split('.')[0];
-        const pathSegments = window.location.pathname.split('/').filter(Boolean);
-        if (pathSegments.length > 0) repo = pathSegments[0];
-      }
-      const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits?per_page=1`);
-      if (!res.ok) return;
-      const commits = await res.json();
-      if (commits && commits.length > 0 && commits[0].commit && commits[0].commit.committer) {
-        const d = new Date(commits[0].commit.committer.date);
-        const yy = String(d.getFullYear()).slice(-2);
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        const dd = String(d.getDate()).padStart(2, '0');
-        dateSpan.innerText = `${yy}.${mm}.${dd}.`;
-      }
-    } catch (e) {
-      // 오프라인 또는 호출 제한 시 기본 날짜 유지
-    }
-  }
-
   window.onload = function() {
-    syncGithubUpdateDate();
+    // 최상단 APP_CONFIG 설정값을 화면 제목 및 서명 영역에 자동 반영
+    document.title = `${APP_CONFIG.appName} Mobile - ${APP_CONFIG.version}`;
+    document.getElementById('appSignature').innerHTML =
+      `${APP_CONFIG.appName} (${APP_CONFIG.version}) · Last Update: ${APP_CONFIG.lastUpdate}<br>` +
+      `${APP_CONFIG.author}<br>${APP_CONFIG.notice}`;
+
     const controlWrapper = document.getElementById('controlWrapper');
     const resizeHandle = document.getElementById('resizeHandle');
     const baseWidth = 215;
