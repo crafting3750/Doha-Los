@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Doha Los (v3.6)</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <style>
+    html, body { height: 100%; margin: 0; padding: 0; background: #000; overflow: hidden; }
+    #map { height: 100%; width: 100%; }
+    
+    /* 좌측 상단 기준점 고정 및 비율 유지 스케일링 컨테이너 */
+    .control-wrapper {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      z-index: 1000;
+      width: 215px;
+      transform-origin: top left;
+      transition: transform 0.05s ease-out;
+    }
+
+    .control-box {
+      position: relative;
+      background: rgba(255,255,255,0.95);
+      padding: 10px 10px 14px 10px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+      width: 100%;
+      box-sizing: border-box;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 11px;
+    }
+
+    /* 우측 하단 모서리 크기 조절 핸들 */
+    .resize-handle {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      width: 24px;
+      height: 24px;
+      cursor: nwse-resize;
+      touch-action: none;
+      display: flex;
+      align-items: flex-end;
+      justify-content: flex-end;
+      padding: 3px;
+      box-sizing: border-box;
+      border-bottom-right-radius: 8px;
+      z-index: 1010;
+    }
+    .resize-handle::after {
+      content: "";
+      width: 10px;
+      height: 10px;
+      background: linear-gradient(135deg, transparent 45%, #888 45%, #888 60%, transparent 60%, transparent 75%, #888 75%);
+      display: block;
+    }
+    .resize-handle.active {
+      background: rgba(0, 86, 179, 0.15);
+    }
+
+    .input-group { margin-bottom: 8px; border-bottom: 1px solid #eee; padding-bottom: 6px; }
+    strong { font-size: 11px; display: block; margin-bottom: 3px; color: #333; }
+    input { width: 100%; margin-bottom: 4px; padding: 5px; box-sizing: border-box; font-size: 11px; border: 1px solid #ccc; border-radius: 4px; }
+    
+    /* MGRS 분할 입력 필드 스타일 */
+    .mgrs-split-container {
+      display: flex;
+      gap: 3px;
+      margin-bottom: 4px;
+    }
+    .mgrs-split-container input {
+      text-align: center;
+      padding: 4px 2px;
+      font-size: 10px;
+      margin-bottom: 0;
+      text-transform: uppercase;
+    }
+
+    button { padding: 5px; cursor: pointer; border-radius: 4px; border: 1px solid #666; background: #fff; font-size: 10px; font-weight: 500; }
+    button:active { background: #eee; }
+    .btn-half { width: 48.5%; }
+    .btn-gps { width: 100%; background: #28a745; color: white; border: none; height: 30px; margin: 2px 0 4px 0; font-weight: bold; }
+    .btn-los { width: 100%; background: #d9534f; color: white; border: none; height: 34px; font-weight: bold; font-size: 11px; }
+    .signature { text-align: center; margin-top: 6px; font-size: 8px; color: #666; letter-spacing: -0.3px; line-height: 1.3; }
+
+    /* 정밀 분석 로딩창 */
+    #loading-overlay {
+      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.85); z-index: 3000; flex-direction: column; justify-content: center; align-items: center; color: white;
+    }
+    .loader-spinner { border: 4px solid #f3f3f3; border-top: 4px solid #d9534f; border-radius: 50%; width: 32px; height: 32px; animation: spin 0.9s linear infinite; margin-bottom: 15px; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .btn-stop { margin-top: 18px; padding: 8px 18px; background: #555; color: white; border: none; border-radius: 4px; font-size: 12px; }
+
+    #los-popup {
+      display: none; position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%);
+      width: 95%; max-width: 800px; background: white; z-index: 2000; border-radius: 10px;
+      box-shadow: 0 -4px 20px rgba(0,0,0,0.4); padding: 12px; box-sizing: border-box;
+      touch-action: none;
+    }
+    canvas { width: 100%; height: 180px; background: #fafafa; border-bottom: 1px solid #ddd; border-radius: 4px; cursor: crosshair; }
+    .status-badge { font-weight: bold; padding: 2px 6px; border-radius: 4px; font-size: 10px; display: inline-block; }
+    .status-clear { background: #d4edda; color: #155724; }
+    .status-blocked { background: #f8d7da; color: #721c24; }
+    
+    /* C지점 해제 버튼 스타일 */
+    .btn-clear-c {
+      background: #fff3e0;
+      color: #e65100;
+      border: 1px solid #ff9800;
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 10px;
+      font-weight: bold;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .btn-clear-c:active {
+      background: #ffe0b2;
+    }
+  </style>
+</head>
+<body>
+
+<div id="loading-overlay">
+  <div class="loader-spinner"></div>
+  <div id="status-text" style="font-size: 14px; font-weight: bold;">위성 지형 타일(DEM) 직접 분석 중...</div>
+  <div id="sub-status" style="font-size: 11px; color: #bbb; margin-top: 6px;">(AWS Terrarium 고도 데이터 추출)</div>
+  <button id="stopAnalysis" class="btn-stop">분석 취소</button>
+</div>
+
+<div class="control-wrapper" id="controlWrapper">
+  <div class="control-box" id="controlBox">
+    <div class="input-group">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:3px;">
+        <strong style="margin-bottom:0;">Point A (MGRS 입력)</strong>
+        <button id="toggleMgrsModeA" style="padding:2px 6px; font-size:9px; background:#e9ecef; border-color:#adb5bd; color:#333;">한줄 입력</button>
+      </div>
+      <div id="aSplitContainer" class="mgrs-split-container">
+        <input id="aZone" placeholder="구역(52S)" maxlength="4" value="52S">
+        <input id="aSq" placeholder="식별(CH)" maxlength="2">
+        <input id="aEast" placeholder="동거차" maxlength="5">
+        <input id="aNorth" placeholder="북거차" maxlength="5">
+      </div>
+      <input id="aSingleInput" placeholder="예: 52SCH1234567890" style="display:none; text-transform:uppercase; font-size:10px; padding:4px 5px;">
+      <div style="display:flex; gap:3px;">
+        <button id="setA" class="btn-half" style="color:red">A 찍기</button>
+        <button id="clearA" class="btn-half">해제</button>
+      </div>
+      <button id="moveA" style="width:100%; margin-top:4px;">A로 이동</button>
+    </div>
+
+    <div class="input-group">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:3px;">
+        <strong style="margin-bottom:0;">Point B (MGRS 입력)</strong>
+        <button id="toggleMgrsModeB" style="padding:2px 6px; font-size:9px; background:#e9ecef; border-color:#adb5bd; color:#333;">한줄 입력</button>
+      </div>
+      <div id="bSplitContainer" class="mgrs-split-container">
+        <input id="bZone" placeholder="구역(52S)" maxlength="4" value="52S">
+        <input id="bSq" placeholder="식별(CH)" maxlength="2">
+        <input id="bEast" placeholder="동거차" maxlength="5">
+        <input id="bNorth" placeholder="북거차" maxlength="5">
+      </div>
+      <input id="bSingleInput" placeholder="예: 52SCH1234567890" style="display:none; text-transform:uppercase; font-size:10px; padding:4px 5px;">
+      <div style="display:flex; gap:3px;">
+        <button id="setB" class="btn-half" style="color:blue">B 찍기</button>
+        <button id="clearB" class="btn-half">해제</button>
+      </div>
+      <button id="moveB" style="width:100%; margin-top:4px;">B로 이동</button>
+    </div>
+
+    <button id="myGps" class="btn-gps">내 GPS 위치 찾기</button>
+    <button id="gpsToA" style="width:100%; margin-bottom:6px; background:#e9f7ef; color:#1e7e34; border-color:#28a745; display:none;">현재 GPS 좌표를 A로 지정</button>
+    <button id="toggleRoadLayer" style="width:100%; margin-bottom:6px; background:#f0f4f8; color:#0056b3; border-color:#0056b3; font-weight:bold;">한국어 도로/지명: ON</button>
+    <button id="checkLOS" class="btn-los">정밀 단면 분석 (DEM 직독)</button>
+    <div class="signature">8기동사단 60기보여단 전송반장 중사 임도현<br>불펌 및 무단수정 금지</div>
+    <div class="resize-handle" id="resizeHandle" title="드래그하여 크기 조절"></div>
+  </div>
+</div>
+
+<div id="map"></div>
+
+<div id="los-popup">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:4px;">
+    <div>
+      <div style="font-size:12px; font-weight:bold; color:#333;">단면 분석 결과</div>
+      <div id="dist-info" style="font-size:10px; color:#555; margin-top:2px;">-</div>
+    </div>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <span id="los-status-badge"></span>
+      <button onclick="closeProfilePopup()" style="border:none; background:none; font-size:18px; cursor:pointer;">✕</button>
+    </div>
+  </div>
+  <!-- 전용 상세 정보 표시 바 및 C지점 해제 버튼 -->
+  <div style="background:#f1f3f5; padding:6px 8px; border-radius:4px; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center; gap:6px;">
+    <div id="selected-info-bar" style="font-size:11px; color:#333; font-weight:500; min-height:32px; line-height:1.4; flex:1;">
+      💡 그래프를 터치하거나 드래그하여<br>특정 지점(<span style="color:#ff9800; font-weight:bold;">C지점</span>)의 고도와 거리를 확인하세요
+    </div>
+    <button id="clearCBtn" onclick="clearPointC()" class="btn-clear-c" style="display:none;">C지점 해제</button>
+  </div>
+  <canvas id="los-canvas" width="1200" height="340"></canvas>
+  <div style="display:flex; justify-content:space-between; font-size:10px; margin-top:4px; color:#555;">
+    <div>
+      <span style="font-weight:bold; color:red;">A 지점</span><br>
+      <span id="label-elevation-a" style="font-size:11px; color:#333; font-weight:bold;">- m</span>
+    </div>
+    <div style="text-align:center; padding-top:4px;">
+      <span style="color:red; font-weight:bold;">━━</span> 가시선 &nbsp; <span style="color:#2e7d32; font-weight:bold;">━━</span> 실제 지형
+    </div>
+    <div style="text-align:right;">
+      <span style="font-weight:bold; color:blue;">B 지점</span><br>
+      <span id="label-elevation-b" style="font-size:11px; color:#333; font-weight:bold;">- m</span>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mgrs@1.0.0/dist/mgrs.min.js"></script>
+
+<script>
+  let closeProfilePopup;
+  let clearPointC;
+
+  window.onload = function() {
+    const controlWrapper = document.getElementById('controlWrapper');
+    const resizeHandle = document.getElementById('resizeHandle');
+    const baseWidth = 215;
+    let currentScale = parseFloat(localStorage.getItem('doha_ui_scale')) || 1.0;
+
+    function applyBoxScale(scale) {
+      currentScale = Math.min(Math.max(scale, 0.65), 1.6);
+      controlWrapper.style.transform = `scale(${currentScale})`;
+      localStorage.setItem('doha_ui_scale', currentScale);
+    }
+    applyBoxScale(currentScale);
+
+    let isResizing = false;
+    let startX = 0, startY = 0, startScale = 1.0;
+
+    function onResizeStart(clientX, clientY) {
+      isResizing = true; startX = clientX; startY = clientY; startScale = currentScale;
+      resizeHandle.classList.add('active');
+    }
+    function onResizeMove(clientX, clientY) {
+      if (!isResizing) return;
+      const dx = clientX - startX, dy = clientY - startY;
+      applyBoxScale(startScale + ((dx + dy) * 0.5) / baseWidth);
+    }
+    function onResizeEnd() {
+      if (!isResizing) return;
+      isResizing = false;
+      resizeHandle.classList.remove('active');
+    }
+
+    resizeHandle.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); onResizeStart(e.clientX, e.clientY); });
+    window.addEventListener('mousemove', (e) => onResizeMove(e.clientX, e.clientY));
+    window.addEventListener('mouseup', onResizeEnd);
+    resizeHandle.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); if (e.touches.length === 1) onResizeStart(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+    window.addEventListener('touchmove', (e) => { if (isResizing) { e.preventDefault(); if (e.touches.length === 1) onResizeMove(e.touches[0].clientX, e.touches[0].clientY); } }, { passive: false });
+    window.addEventListener('touchend', onResizeEnd);
+
+    const map = L.map('map', { zoomControl: false }).setView([37.9, 127.0], 9);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Esri' }).addTo(map);
+
+    const googleRoadOverlay = L.tileLayer('https://mt1.google.com/vt/lyrs=h&hl=ko&x={x}&y={y}&z={z}', { attribution: 'Google', maxZoom: 20, zIndex: 500 }).addTo(map);
+    let isRoadVisible = true;
+    document.getElementById('toggleRoadLayer').onclick = function() {
+      if (isRoadVisible) {
+        map.removeLayer(googleRoadOverlay);
+        this.innerText = "한국어 도로/지명: OFF"; this.style.background = "#fff"; this.style.color = "#666"; this.style.borderColor = "#666";
+      } else {
+        googleRoadOverlay.addTo(map);
+        this.innerText = "한국어 도로/지명: ON"; this.style.background = "#f0f4f8"; this.style.color = "#0056b3"; this.style.borderColor = "#0056b3";
+      }
+      isRoadVisible = !isRoadVisible;
+    };
+
+    let aCoord = null, bCoord = null, gpsCoord = null, mode = null;
+    let markerA = null, markerB = null, markerGps = null, losLine = null, scrubMarker = null;
+    let isCancelled = false;
+    let cachedResults = null, cachedDistMeters = 0, persistentIndex = null;
+    let isSingleMgrsModeA = false;
+    let isSingleMgrsModeB = false;
+
+    // Point A 입력 방식 전환 토글
+    document.getElementById('toggleMgrsModeA').onclick = function() {
+      isSingleMgrsModeA = !isSingleMgrsModeA;
+      const aSplit = document.getElementById('aSplitContainer');
+      const aSingle = document.getElementById('aSingleInput');
+
+      if (isSingleMgrsModeA) {
+        const aVal = (document.getElementById('aZone').value + document.getElementById('aSq').value + document.getElementById('aEast').value + document.getElementById('aNorth').value).replace(/\s+/g, '');
+        if (aVal && aVal !== '52S') aSingle.value = aVal;
+        aSplit.style.display = 'none';
+        aSingle.style.display = 'block';
+        this.innerText = '분할 입력';
+      } else {
+        if (aSingle.value.trim().length >= 5) fillMgrsSplits('a', aSingle.value.trim());
+        aSplit.style.display = 'flex';
+        aSingle.style.display = 'none';
+        this.innerText = '한줄 입력';
+      }
+    };
+
+    // Point B 입력 방식 전환 토글
+    document.getElementById('toggleMgrsModeB').onclick = function() {
+      isSingleMgrsModeB = !isSingleMgrsModeB;
+      const bSplit = document.getElementById('bSplitContainer');
+      const bSingle = document.getElementById('bSingleInput');
+
+      if (isSingleMgrsModeB) {
+        const bVal = (document.getElementById('bZone').value + document.getElementById('bSq').value + document.getElementById('bEast').value + document.getElementById('bNorth').value).replace(/\s+/g, '');
+        if (bVal && bVal !== '52S') bSingle.value = bVal;
+        bSplit.style.display = 'none';
+        bSingle.style.display = 'block';
+        this.innerText = '분할 입력';
+      } else {
+        if (bSingle.value.trim().length >= 5) fillMgrsSplits('b', bSingle.value.trim());
+        bSplit.style.display = 'flex';
+        bSingle.style.display = 'none';
+        this.innerText = '한줄 입력';
+      }
+    };
+
+    function clearLosOverlay() {
+      if (losLine) { map.removeLayer(losLine); losLine = null; }
+      clearPointC();
+      document.getElementById('los-popup').style.display = 'none';
+    }
+
+    closeProfilePopup = function() {
+      clearPointC();
+      document.getElementById('los-popup').style.display = 'none';
+    };
+
+    clearPointC = function() {
+      if (scrubMarker) { map.removeLayer(scrubMarker); scrubMarker = null; }
+      persistentIndex = null;
+      if (cachedResults && document.getElementById('los-popup').style.display !== 'none') {
+        drawProfile(null);
+      }
+    };
+
+    function fillMgrsSplits(prefix, mgrsStr) {
+      mgrsStr = mgrsStr.replace(/\s+/g, '');
+      let zone = mgrsStr.substring(0, 3);
+      let sq = mgrsStr.substring(3, 5);
+      let rest = mgrsStr.substring(5);
+      let halfLen = Math.floor(rest.length / 2);
+      let east = rest.substring(0, halfLen);
+      let north = rest.substring(halfLen);
+      if (east.length < 5) east = east.padEnd(5, '0');
+      if (north.length < 5) north = north.padEnd(5, '0');
+
+      document.getElementById(prefix + 'Zone').value = zone;
+      document.getElementById(prefix + 'Sq').value = sq;
+      document.getElementById(prefix + 'East').value = east;
+      document.getElementById(prefix + 'North').value = north;
+      document.getElementById(prefix + 'SingleInput').value = mgrsStr;
+    }
+
+    function updateA(latlng) {
+      clearLosOverlay();
+      if (markerA) map.removeLayer(markerA);
+      aCoord = latlng;
+      const fullMgrs = mgrs.forward([latlng.lng, latlng.lat]);
+      fillMgrsSplits('a', fullMgrs);
+      markerA = L.circleMarker(latlng, {radius:6, color:'red', weight:2, fillOpacity:1}).addTo(map);
+    }
+
+    function updateB(latlng) {
+      clearLosOverlay();
+      if (markerB) map.removeLayer(markerB);
+      bCoord = latlng;
+      const fullMgrs = mgrs.forward([latlng.lng, latlng.lat]);
+      fillMgrsSplits('b', fullMgrs);
+      markerB = L.circleMarker(latlng, {radius:6, color:'blue', weight:2, fillOpacity:1}).addTo(map);
+    }
+
+    document.getElementById('setA').onclick = () => mode = 'A';
+    document.getElementById('setB').onclick = () => mode = 'B';
+    document.getElementById('clearA').onclick = () => { 
+      clearLosOverlay(); 
+      if(markerA) { map.removeLayer(markerA); markerA = null; } 
+      aCoord = null; 
+      document.getElementById('aSingleInput').value = '';
+      ['aZone','aSq','aEast','aNorth'].forEach(id => document.getElementById(id).value = '');
+      document.getElementById('aZone').value = '52S';
+    };
+    document.getElementById('clearB').onclick = () => { 
+      clearLosOverlay(); 
+      if(markerB) { map.removeLayer(markerB); markerB = null; } 
+      bCoord = null; 
+      document.getElementById('bSingleInput').value = '';
+      ['bZone','bSq','bEast','bNorth'].forEach(id => document.getElementById(id).value = '');
+      document.getElementById('bZone').value = '52S';
+    };
+
+    map.on('click', e => {
+      if (mode === 'A') { updateA(e.latlng); mode = null; }
+      else if (mode === 'B') { updateB(e.latlng); mode = null; }
+    });
+
+    document.getElementById('moveA').onclick = () => {
+      try {
+        let combined = '';
+        if (isSingleMgrsModeA) {
+          combined = document.getElementById('aSingleInput').value.replace(/\s+/g, '').toUpperCase();
+        } else {
+          const zone = document.getElementById('aZone').value.trim();
+          const sq = document.getElementById('aSq').value.trim();
+          const east = document.getElementById('aEast').value.trim();
+          const north = document.getElementById('aNorth').value.trim();
+          combined = (zone + sq + east + north).replace(/\s+/g, '').toUpperCase();
+        }
+        const d = mgrs.toPoint(combined);
+        updateA(L.latLng(d[1], d[0]));
+        map.setView([d[1], d[0]], 14);
+      } catch(e) {
+        alert("A지점 MGRS 입력 형식 오류 (예: 52S CH 12345 67890)");
+      }
+    };
+
+    document.getElementById('moveB').onclick = () => {
+      try {
+        let combined = '';
+        if (isSingleMgrsModeB) {
+          combined = document.getElementById('bSingleInput').value.replace(/\s+/g, '').toUpperCase();
+        } else {
+          const zone = document.getElementById('bZone').value.trim();
+          const sq = document.getElementById('bSq').value.trim();
+          const east = document.getElementById('bEast').value.trim();
+          const north = document.getElementById('bNorth').value.trim();
+          combined = (zone + sq + east + north).replace(/\s+/g, '').toUpperCase();
+        }
+        const d = mgrs.toPoint(combined);
+        updateB(L.latLng(d[1], d[0]));
+        map.setView([d[1], d[0]], 14);
+      } catch(e) {
+        alert("B지점 MGRS 입력 형식 오류 (예: 52S CH 12345 67890)");
+      }
+    };
+
+    document.getElementById('myGps').onclick = () => {
+      if (!navigator.geolocation) return alert("GPS 미지원");
+      const isLocalFile = window.location.protocol === 'file:' || window.location.protocol === 'content:';
+      const btnGps = document.getElementById('myGps');
+      btnGps.innerText = "위성 신호 수신 중...";
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          btnGps.innerText = "내 GPS 위치 찾기";
+          const latlng = L.latLng(pos.coords.latitude, pos.coords.longitude);
+          gpsCoord = latlng;
+          if (markerGps) map.removeLayer(markerGps);
+          markerGps = L.circleMarker(latlng, {radius:8, color:'#ffcc00', fillColor:'#ffff00', fillOpacity:0.8, weight:3}).addTo(map);
+          map.setView(latlng, 15);
+          document.getElementById('gpsToA').style.display = 'block';
+        },
+        () => {
+          btnGps.innerText = "내 GPS 위치 찾기";
+          alert(isLocalFile ? "로컬 파일 환경에서는 GPS가 차단됩니다." : "GPS 수신 실패");
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    };
+
+    document.getElementById('gpsToA').onclick = () => { if (gpsCoord) { updateA(gpsCoord); alert("현재 GPS 위치가 Point A로 지정되었습니다."); } };
+    document.getElementById('stopAnalysis').onclick = () => { isCancelled = true; document.getElementById('loading-overlay').style.display = 'none'; };
+
+    function latLngToTilePixel(lat, lng, zoom) {
+      const n = Math.pow(2, zoom);
+      const x = ((lng + 180) / 360) * n;
+      const latRad = (lat * Math.PI) / 180;
+      const y = ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n;
+      return { tileX: Math.floor(x), tileY: Math.floor(y), pixelX: Math.floor((x - Math.floor(x)) * 256), pixelY: Math.floor((y - Math.floor(y)) * 256) };
+    }
+
+    const tileCache = new Map();
+    function loadDemTile(z, x, y) {
+      const key = `${z}/${x}/${y}`;
+      if (tileCache.has(key)) return tileCache.get(key);
+      const promise = new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = "Anonymous";
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = 256; canvas.height = 256;
+          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+          ctx.drawImage(img, 0, 0);
+          try { resolve(ctx.getImageData(0, 0, 256, 256).data); } catch (e) { reject(e); }
+        };
+        img.onerror = () => reject(new Error(`Tile load failed`));
+        img.src = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`;
+      });
+      tileCache.set(key, promise);
+      return promise;
+    }
+
+    async function fetchElevationFromDEM(points, distMeters) {
+      const zoom = distMeters > 40000 ? 11 : 12;
+      const pointCoords = points.map(p => latLngToTilePixel(p.lat, p.lng, zoom));
+      const uniqueTiles = new Map();
+      pointCoords.forEach(c => {
+        const key = `${zoom}/${c.tileX}/${c.tileY}`;
+        if (!uniqueTiles.has(key)) uniqueTiles.set(key, { z: zoom, x: c.tileX, y: c.tileY });
+      });
+      const loadedData = await Promise.all(Array.from(uniqueTiles.entries()).map(async ([key, t]) => [key, await loadDemTile(t.z, t.x, t.y)]));
+      const tileDataMap = new Map(loadedData);
+      return pointCoords.map((c, idx) => {
+        const data = tileDataMap.get(`${zoom}/${c.tileX}/${c.tileY}`);
+        const pIdx = (c.pixelY * 256 + c.pixelX) * 4;
+        const elevation = (data[pIdx] * 256 + data[pIdx + 1] + data[pIdx + 2] / 256) - 32768;
+        return { lat: points[idx].lat, lng: points[idx].lng, elevation: Math.max(elevation, -100) };
+      });
+    }
+
+    document.getElementById('checkLOS').onclick = async () => {
+      if (!aCoord || !bCoord) return alert("A지점과 B지점을 먼저 지정하세요.");
+      isCancelled = false;
+      const overlay = document.getElementById('loading-overlay');
+      overlay.style.display = 'flex';
+      
+      if (losLine) map.removeLayer(losLine);
+      clearPointC();
+      losLine = L.polyline([aCoord, bCoord], {color:'cyan', weight:2, dashArray:'5,5'}).addTo(map);
+      
+      const distanceMeters = aCoord.distanceTo(bCoord);
+      const samples = Math.min(Math.max(10, Math.ceil(distanceMeters / 10)), 15000);
+      document.getElementById('sub-status').innerText = `AWS 위성 타일 수신 중... (${samples.toLocaleString()}구간)`;
+
+      const points = [];
+      for(let i=0; i<=samples; i++) {
+        points.push({ lat: aCoord.lat + (bCoord.lat - aCoord.lat)*(i/samples), lng: aCoord.lng + (bCoord.lng - aCoord.lng)*(i/samples) });
+      }
+
+      try {
+        const results = await fetchElevationFromDEM(points, distanceMeters);
+        if (isCancelled) return;
+        overlay.style.display = 'none';
+        cachedResults = results;
+        cachedDistMeters = distanceMeters;
+        
+        document.getElementById('label-elevation-a').innerText = `${Math.round(results[0].elevation)}m`;
+        document.getElementById('label-elevation-b').innerText = `${Math.round(results[results.length - 1].elevation)}m`;
+
+        drawProfile();
+      } catch(err) {
+        if (!isCancelled) alert("데이터 수신 실패");
+        overlay.style.display = 'none';
+      }
+    };
+
+    function drawProfile(activeIndex = null) {
+      if (!cachedResults) return;
+      const results = cachedResults;
+      const distMeters = cachedDistMeters;
+      const canvas = document.getElementById('los-canvas');
+      const ctx = canvas.getContext('2d');
+      const W = canvas.width;
+      const H = canvas.height;
+      document.getElementById('los-popup').style.display = 'block';
+      
+      const distKm = (distMeters / 1000).toFixed(2);
+      const N = results.length;
+      const intervals = N - 1;
+      const stepMeters = (distMeters / intervals).toFixed(2);
+      
+      document.getElementById('dist-info').innerText = `거리: ${distKm} km / ${intervals.toLocaleString()}구간 (${stepMeters}m 간격)`;
+
+      const R_eff = 6371000 * (4/3);
+      const curvedElevations = results.map((r, i) => {
+        const d1 = (i / (N - 1)) * distMeters;
+        return r.elevation - ((d1 * (distMeters - d1)) / (2 * R_eff));
+      });
+
+      const maxE = Math.max(...curvedElevations) + 25;
+      const minE = Math.min(...curvedElevations) - 15;
+      const range = Math.max(maxE - minE, 20);
+
+      ctx.clearRect(0, 0, W, H);
+      
+      // 지형 배경
+      ctx.beginPath();
+      ctx.fillStyle = "rgba(40, 167, 69, 0.18)";
+      curvedElevations.forEach((e, i) => {
+        const x = (i / (N - 1)) * W;
+        const y = H - ((e - minE) / range) * (H - 40) - 20;
+        if(i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.lineTo(W, H); ctx.lineTo(0, H);
+      ctx.fill();
+
+      // 지형 선
+      ctx.beginPath();
+      ctx.strokeStyle = "#2e7d32";
+      ctx.lineWidth = 2.5;
+      curvedElevations.forEach((e, i) => {
+        const x = (i / (N - 1)) * W;
+        const y = H - ((e - minE) / range) * (H - 40) - 20;
+        if(i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+
+      // 10m 안테나 마스트 및 LOS 계산
+      const antennaHeight = 10;
+      const curvedElevA_Antenna = curvedElevations[0] + antennaHeight;
+      const curvedElevB_Antenna = curvedElevations[N - 1] + antennaHeight;
+
+      const terrainStartY = H - ((curvedElevations[0] - minE) / range) * (H - 40) - 20;
+      const terrainEndY = H - ((curvedElevations[N - 1] - minE) / range) * (H - 40) - 20;
+
+      const antennaStartY = H - ((curvedElevA_Antenna - minE) / range) * (H - 40) - 20;
+      const antennaEndY = H - ((curvedElevB_Antenna - minE) / range) * (H - 40) - 20;
+
+      ctx.beginPath();
+      ctx.strokeStyle = "#111";
+      ctx.lineWidth = 3;
+      ctx.moveTo(0, terrainStartY);
+      ctx.lineTo(0, antennaStartY);
+      ctx.moveTo(W, terrainEndY);
+      ctx.lineTo(W, antennaEndY);
+      ctx.stroke();
+
+      let isBlocked = false;
+      for (let i = 1; i < N - 1; i++) {
+        const ratio = i / (N - 1);
+        const losY = antennaStartY + (antennaEndY - antennaStartY) * ratio;
+        const terrainY = H - ((curvedElevations[i] - minE) / range) * (H - 40) - 20;
+        if (terrainY < losY - 1) { isBlocked = true; break; }
+      }
+
+      ctx.beginPath();
+      ctx.strokeStyle = isBlocked ? "#d9534f" : "#0275d8";
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([6, 4]);
+      ctx.moveTo(0, antennaStartY);
+      ctx.lineTo(W, antennaEndY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // A지점 및 B지점 마커 (10m 안테나 상단)
+      ctx.beginPath();
+      ctx.fillStyle = "red";
+      ctx.arc(0, antennaStartY, 6, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.fillStyle = "blue";
+      ctx.arc(W, antennaEndY, 6, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      const badgeSpan = document.getElementById('los-status-badge');
+      if (isBlocked) {
+        badgeSpan.className = "status-badge status-blocked";
+        badgeSpan.innerText = "시계 차폐 (Blocked)";
+      } else {
+        badgeSpan.className = "status-badge status-clear";
+        badgeSpan.innerText = "통신/시계 확보 (Clear)";
+      }
+
+      const infoBar = document.getElementById('selected-info-bar');
+      const clearCBtn = document.getElementById('clearCBtn');
+
+      if (activeIndex !== null && activeIndex >= 0 && activeIndex < N) {
+        const r = results[activeIndex];
+        const dFromA = (activeIndex / (N - 1)) * distMeters;
+        const dFromB = distMeters - dFromA;
+        const terrainY = H - ((curvedElevations[activeIndex] - minE) / range) * (H - 40) - 20;
+        const xPos = (activeIndex / (N - 1)) * W;
+
+        // C지점 수직선 및 마커
+        ctx.beginPath();
+        ctx.strokeStyle = "#ff9800";
+        ctx.lineWidth = 2;
+        ctx.moveTo(xPos, 0);
+        ctx.lineTo(xPos, H);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.fillStyle = "#ff9800";
+        ctx.arc(xPos, terrainY, 6, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // 캔버스 위 C지점 라벨 표시
+        ctx.font = "bold 20px sans-serif";
+        ctx.fillStyle = "#e65100";
+        const labelText = "C지점";
+        const textWidth = ctx.measureText(labelText).width;
+        const labelX = (xPos + textWidth + 15 > W) ? xPos - textWidth - 10 : xPos + 10;
+        const labelY = Math.max(24, terrainY - 12);
+        ctx.fillText(labelText, labelX, labelY);
+
+        let pointMgrs = "-";
+        try {
+          pointMgrs = mgrs.forward([r.lng, r.lat], 5);
+        } catch(e) {
+          pointMgrs = "좌표 계산 불가";
+        }
+
+        // A -> C 구간 차폐 여부 검사
+        let blockedFromA = false;
+        if (activeIndex > 0) {
+          const antennaA_Y = antennaStartY;
+          const targetY = H - ((curvedElevations[activeIndex] - minE) / range) * (H - 40) - 20;
+          for (let i = 1; i < activeIndex; i++) {
+            const ratio = i / activeIndex;
+            const lineY = antennaA_Y + (targetY - antennaA_Y) * ratio;
+            const terrY = H - ((curvedElevations[i] - minE) / range) * (H - 40) - 20;
+            if (terrY < lineY - 1) { blockedFromA = true; break; }
+          }
+        }
+
+        // C -> B 구간 차폐 여부 검사
+        let blockedFromB = false;
+        if (activeIndex < N - 1) {
+          const startIdx = activeIndex;
+          const totalSteps = (N - 1) - startIdx;
+          const startY = H - ((curvedElevations[startIdx] - minE) / range) * (H - 40) - 20;
+          const antennaB_Y = antennaEndY;
+          for (let step = 1; step < totalSteps; step++) {
+            const i = startIdx + step;
+            const ratio = step / totalSteps;
+            const lineY = startY + (antennaB_Y - startY) * ratio;
+            const terrY = H - ((curvedElevations[i] - minE) / range) * (H - 40) - 20;
+            if (terrY < lineY - 1) { blockedFromB = true; break; }
+          }
+        }
+
+        const aStatusStr = blockedFromA ? '<span style="color:#d9534f; font-weight:bold;">[차폐]</span>' : '<span style="color:#2e7d32; font-weight:bold;">[확보]</span>';
+        const bStatusStr = blockedFromB ? '<span style="color:#d9534f; font-weight:bold;">[차폐]</span>' : '<span style="color:#2e7d32; font-weight:bold;">[확보]</span>';
+
+        infoBar.innerHTML = 
+          `<span style="color:#ff9800; font-weight:bold;">● C지점</span> &nbsp;|&nbsp; ` +
+          `<span style="color:#d9534f">고도: <b>${Math.round(r.elevation)}m</b></span> &nbsp;|&nbsp; ` +
+          `<span style="color:#0056b3">MGRS: <b>${pointMgrs}</b></span><br>` +
+          `<span style="color:#333">A에서: <b>${(dFromA>=1000?(dFromA/1000).toFixed(2)+'km':Math.round(dFromA)+'m')}</b> ${aStatusStr}</span> &nbsp;|&nbsp; ` +
+          `<span style="color:#333">B에서: <b>${(dFromB>=1000?(dFromB/1000).toFixed(2)+'km':Math.round(dFromB)+'m')}</b> ${bStatusStr}</span>`;
+
+        if (clearCBtn) clearCBtn.style.display = 'inline-block';
+
+        if (!scrubMarker) {
+          scrubMarker = L.circleMarker([r.lat, r.lng], {radius:7, color:'#ff9800', fillColor:'#ff9800', fillOpacity:1, weight:2}).addTo(map);
+        } else {
+          scrubMarker.setStyle({color: '#ff9800', fillColor: '#ff9800'});
+          scrubMarker.setLatLng([r.lat, r.lng]);
+        }
+      } else {
+        infoBar.innerHTML = `💡 그래프를 터치하거나 드래그하여<br>특정 지점(<span style="color:#ff9800; font-weight:bold;">C지점</span>)의 고도와 거리를 확인하세요`;
+        if (clearCBtn) clearCBtn.style.display = 'none';
+      }
+    }
+
+    const canvas = document.getElementById('los-canvas');
+    let isDraggingCanvas = false;
+
+    function handleCanvasPointer(e) {
+      if (!cachedResults) return;
+      const rect = canvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const xRel = clientX - rect.left;
+      const ratio = Math.max(0, Math.min(1, xRel / rect.width));
+      persistentIndex = Math.round(ratio * (cachedResults.length - 1));
+      drawProfile(persistentIndex);
+    }
+
+    canvas.addEventListener('mousedown', (e) => { isDraggingCanvas = true; handleCanvasPointer(e); });
+    window.addEventListener('mousemove', (e) => { if (isDraggingCanvas) handleCanvasPointer(e); });
+    window.addEventListener('mouseup', () => { isDraggingCanvas = false; });
+
+    canvas.addEventListener('touchstart', (e) => { isDraggingCanvas = true; handleCanvasPointer(e); e.preventDefault(); }, { passive: false });
+    window.addEventListener('touchmove', (e) => { if (isDraggingCanvas) { handleCanvasPointer(e); e.preventDefault(); } }, { passive: false });
+    window.addEventListener('touchend', () => { isDraggingCanvas = false; });
+  };
+</script>
+</body>
+</html>
