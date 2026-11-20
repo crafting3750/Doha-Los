@@ -12,7 +12,7 @@
   <script>
     const APP_CONFIG = {
       appName: "Doha LOS",
-      version: "v3.85",
+      version: "v3.84",
       lastUpdate: "2026.11.20.",
       author: "제 8기동사단 60기계화보병여단 전송반장 중사 임도현",
       notice: "Copyright © 2024-2026. All rights reserved.",
@@ -103,19 +103,6 @@
     .btn-los { width: 100%; background: #d9534f; color: white; border: none; height: 34px; font-weight: bold; font-size: 11px; }
     .signature { text-align: center; margin-top: 6px; font-size: 8px; color: #666; letter-spacing: -0.3px; line-height: 1.3; }
 
-    /* [디자인 1번] 서명 영역 통합형 방문자 텍스트 */
-    .visitor-inline {
-      margin-top: 3px;
-      font-size: 8.5px;
-      color: #495057;
-      font-weight: 600;
-      letter-spacing: 0px;
-    }
-    .visitor-inline span {
-      color: #28a745;
-      font-weight: 700;
-    }
-
     /* [디자인 3번] 지도 우측 상단 미니 상태창형 */
     .visitor-map-badge {
       position: absolute;
@@ -133,7 +120,7 @@
       font-weight: 500;
       box-shadow: 0 2px 8px rgba(0,0,0,0.35);
       border: 1px solid rgba(255,255,255,0.15);
-      display: none;
+      display: flex;
       align-items: center;
       gap: 6px;
       pointer-events: none;
@@ -200,7 +187,7 @@
 <!-- [디자인 3번] 지도 우측 상단 미니 상태창형 방문자 표시 -->
 <div id="visitorMapBadge" class="visitor-map-badge">
   <span class="dot"></span>
-  <span id="visitorMapText">Today <b>-</b> · Total <b>-</b></span>
+  <span id="visitorMapText">Today <b>...</b> &nbsp;·&nbsp; Total <b>...</b></span>
 </div>
 
 <div class="control-wrapper" id="controlWrapper">
@@ -301,35 +288,121 @@
   let closeProfilePopup;
   let clearPointC;
 
-  // hits.sh SVG에서 Today / Total 방문자 숫자 추출 후 1번·3번 UI에 반영
-  async function loadVisitorStats() {
-    try {
-      const res = await fetch(`https://hits.sh/${APP_CONFIG.hitCounterPath}.svg`, { cache: 'no-store' });
-      if (!res.ok) return;
-      const svgText = await res.text();
-      // hits.sh SVG 내부의 "today / total" 텍스트 추출 (예: "3 / 128")
-      const match = svgText.match(/>(\d[\d,]*)\s*\/\s*(\d[\d,]*)</);
-      if (match) {
-        const todayCount = match[1];
-        const totalCount = match[2];
+  // 오늘 날짜 키 생성 (로컬 기준 YYYY-MM-DD)
+  function getTodayKey() {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
 
-        // [디자인 1번] 서명 영역 통합형 업데이트
-        const inlineEl = document.getElementById('visitorInlineText');
-        if (inlineEl) {
-          inlineEl.innerHTML = `Today: <span>${todayCount}</span> &nbsp;|&nbsp; Total: <span>${totalCount}</span>`;
-          inlineEl.style.display = 'block';
+  // JSONP 방식으로 외부 카운터 스크립트를 불러와 실제 숫자를 받아오는 헬퍼 함수
+  function fetchJsonpCount(url, timeoutMs = 4500) {
+    return new Promise((resolve) => {
+      const cbName = `dohaCounterCb_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      const script = document.createElement('script');
+      let settled = false;
+
+      const cleanup = () => {
+        if (script.parentNode) script.parentNode.removeChild(script);
+        try { delete window[cbName]; } catch (e) { window[cbName] = undefined; }
+      };
+
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          cleanup();
+          resolve(null);
         }
+      }, timeoutMs);
 
-        // [디자인 3번] 지도 우측 상단 미니 상태창형 업데이트
-        const mapBadge = document.getElementById('visitorMapBadge');
-        const mapText = document.getElementById('visitorMapText');
-        if (mapBadge && mapText) {
-          mapText.innerHTML = `Today <b>${todayCount}</b> &nbsp;·&nbsp; Total <b>${totalCount}</b>`;
-          mapBadge.style.display = 'flex';
+      window[cbName] = (data) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          cleanup();
+          resolve(data);
+        }
+      };
+
+      const sep = url.includes('?') ? '&' : '?';
+      script.src = `${url}${sep}callback=${cbName}`;
+      script.async = true;
+      script.onerror = () => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          cleanup();
+          resolve(null);
+        }
+      };
+      document.body.appendChild(script);
+    });
+  }
+
+  // Today / Total 방문자 숫자 표시 (외부 카운터 연동 + 로컬 누적 백업)
+  async function loadVisitorStats() {
+    const mapText = document.getElementById('visitorMapText');
+    const todayStr = getTodayKey();
+    const ns = 'doha_los_v384';
+
+    // 1) 로컬 저장소 기반 기본값 준비 및 1회 방문 증가 처리
+    const sessionKey = `doha_counted_${todayStr}`;
+    let localTotal = parseInt(localStorage.getItem(`${ns}_total`) || '0', 10);
+    let localToday = parseInt(localStorage.getItem(`${ns}_today_${todayStr}`) || '0', 10);
+
+    if (!sessionStorage.getItem(sessionKey)) {
+      localTotal += 1;
+      localToday += 1;
+      localStorage.setItem(`${ns}_total`, String(localTotal));
+      localStorage.setItem(`${ns}_today_${todayStr}`, String(localToday));
+      sessionStorage.setItem(sessionKey, '1');
+    }
+
+    let finalToday = Math.max(localToday, 1);
+    let finalTotal = Math.max(localTotal, 1);
+
+    try {
+      // 2) 외부 카운터 API(counterapi.dev) 시도
+      const [totalRes, todayRes] = await Promise.allSettled([
+        fetch(`https://api.counterapi.dev/v1/${ns}/total/up`, { cache: 'no-store' }),
+        fetch(`https://api.counterapi.dev/v1/${ns}/today_${todayStr}/up`, { cache: 'no-store' })
+      ]);
+
+      if (totalRes.status === 'fulfilled' && totalRes.value.ok) {
+        const tJson = await totalRes.value.json();
+        const remoteTotal = Number(tJson?.count ?? tJson?.value);
+        if (!Number.isNaN(remoteTotal) && remoteTotal > 0) {
+          finalTotal = remoteTotal;
+          localStorage.setItem(`${ns}_total`, String(finalTotal));
+        }
+      }
+
+      if (todayRes.status === 'fulfilled' && todayRes.value.ok) {
+        const dJson = await todayRes.value.json();
+        const remoteToday = Number(dJson?.count ?? dJson?.value);
+        if (!Number.isNaN(remoteToday) && remoteToday > 0) {
+          finalToday = remoteToday;
+          localStorage.setItem(`${ns}_today_${todayStr}`, String(finalToday));
+        }
+      }
+
+      // 3) 위 fetch가 환경/차단으로 숫자를 못 줬을 경우 JSONP 백업 시도
+      if (finalTotal <= 1) {
+        const jsonpData = await fetchJsonpCount(`https://api.counterapi.dev/v1/${ns}/total/up`);
+        const jpVal = Number(jsonpData?.count ?? jsonpData?.value);
+        if (!Number.isNaN(jpVal) && jpVal > 0) {
+          finalTotal = jpVal;
+          localStorage.setItem(`${ns}_total`, String(finalTotal));
         }
       }
     } catch (e) {
-      // 오프라인 또는 네트워크 차단 시 조용히 숨김 유지
+      // 외부 요청이 막혀도 로컬 누적 숫자로 자연스럽게 표시
+    }
+
+    if (mapText) {
+      mapText.innerHTML = `Today <b>${finalToday.toLocaleString()}</b> &nbsp;·&nbsp; Total <b>${finalTotal.toLocaleString()}</b>`;
     }
   }
 
@@ -338,8 +411,7 @@
     document.title = `${APP_CONFIG.appName} Mobile - ${APP_CONFIG.version}`;
     document.getElementById('appSignature').innerHTML =
       `${APP_CONFIG.appName} (${APP_CONFIG.version}) · Last Update: ${APP_CONFIG.lastUpdate}<br>` +
-      `${APP_CONFIG.author}<br>${APP_CONFIG.notice}` +
-      `<div id="visitorInlineText" class="visitor-inline" style="display:none;"></div>`;
+      `${APP_CONFIG.author}<br>${APP_CONFIG.notice}`;
 
     // 방문자 수 불러오기 실행
     loadVisitorStats();
