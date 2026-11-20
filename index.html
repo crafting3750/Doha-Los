@@ -12,11 +12,11 @@
   <script>
     const APP_CONFIG = {
       appName: "Doha LOS",
-      version: "v3.89",
+      version: "v3.90",
       lastUpdate: "2026.11.20.",
       author: "제 8기동사단 60기계화보병여단 전송반장 중사 임도현",
       notice: "Copyright © 2024-2026. All rights reserved.",
-      // baseTotalOffset: 32
+      baseTotalOffset: 32
     };
   </script>
   <!-- ===================================================================== -->
@@ -230,7 +230,7 @@
 </div>
 
 <div id="map"></div>
-<div class="visitor-badge-float" id="visitorMapText">Today <b>-</b> &nbsp;·&nbsp; Total <b>30</b></div>
+<div class="visitor-badge-float" id="visitorMapText">Today <b>-</b> &nbsp;·&nbsp; Total <b>-</b></div>
 
 <div id="los-popup">
   <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:4px;">
@@ -327,17 +327,15 @@
   async function loadVisitorStats() {
     const mapText = document.getElementById('visitorMapText');
     const todayStr = getTodayKey().replace(/-/g, '_');
-    // 버전 변경(v3.84 -> v3.85 등)과 무관하게 유지되도록 고정 키 사용
     const totalKey = 'doha_los_prod_total';
     const todayKey = `doha_los_prod_today_${todayStr}`;
     const baseOffset = Math.max(0, Number(APP_CONFIG.baseTotalOffset) || 0);
 
-    // 중앙 서버 응답 대기/실패 시 화면 표시용 보조 캐시
     const cachedTotal = parseInt(localStorage.getItem(`${totalKey}_cache`) || '0', 10);
     const cachedToday = parseInt(localStorage.getItem(`${todayKey}_cache`) || '0', 10);
 
     let finalToday = cachedToday > 0 ? cachedToday : null;
-    let finalTotal = cachedTotal > 0 ? cachedTotal + baseOffset : (baseOffset > 0 ? baseOffset : null);
+    let finalTotal = cachedTotal > 0 ? cachedTotal + baseOffset : null;
 
     try {
       const [remoteTotal, remoteToday] = await Promise.all([
@@ -355,7 +353,7 @@
         localStorage.setItem(`${todayKey}_cache`, String(finalToday));
       }
     } catch (e) {
-      // 네트워크 오류 시 캐시 및 보정값 유지
+      // 네트워크 오류 시 캐시 유지
     }
 
     if (mapText) {
