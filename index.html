@@ -12,10 +12,12 @@
   <script>
     const APP_CONFIG = {
       appName: "Doha LOS",
-      version: "v3.84",
+      version: "v3.85",
       lastUpdate: "2026.11.20.",
       author: "제 8기동사단 60기계화보병여단 전송반장 중사 임도현",
-      notice: "Copyright © 2024-2026. All rights reserved."
+      notice: "Copyright © 2024-2026. All rights reserved.",
+      // 방문자 카운터 경로 (GitHub Pages 주소의 도메인/저장소명)
+      hitCounterPath: "crafting3750.github.io/Doha-Los"
     };
   </script>
   <!-- ===================================================================== -->
@@ -101,6 +103,53 @@
     .btn-los { width: 100%; background: #d9534f; color: white; border: none; height: 34px; font-weight: bold; font-size: 11px; }
     .signature { text-align: center; margin-top: 6px; font-size: 8px; color: #666; letter-spacing: -0.3px; line-height: 1.3; }
 
+    /* [디자인 1번] 서명 영역 통합형 방문자 텍스트 */
+    .visitor-inline {
+      margin-top: 3px;
+      font-size: 8.5px;
+      color: #495057;
+      font-weight: 600;
+      letter-spacing: 0px;
+    }
+    .visitor-inline span {
+      color: #28a745;
+      font-weight: 700;
+    }
+
+    /* [디자인 3번] 지도 우측 상단 미니 상태창형 */
+    .visitor-map-badge {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      z-index: 1000;
+      background: rgba(20, 24, 28, 0.78);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      color: #f8f9fa;
+      padding: 5px 10px;
+      border-radius: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 10px;
+      font-weight: 500;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+      border: 1px solid rgba(255,255,255,0.15);
+      display: none;
+      align-items: center;
+      gap: 6px;
+      pointer-events: none;
+    }
+    .visitor-map-badge .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #28a745;
+      box-shadow: 0 0 6px #28a745;
+    }
+    .visitor-map-badge b {
+      color: #7ee787;
+      font-weight: 700;
+    }
+
     /* 정밀 분석 로딩창 */
     #loading-overlay {
       display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -146,6 +195,12 @@
   <div id="status-text" style="font-size: 14px; font-weight: bold;">위성 지형 타일(DEM) 직접 분석 중...</div>
   <div id="sub-status" style="font-size: 11px; color: #bbb; margin-top: 6px;">(AWS Terrarium 고도 데이터 추출)</div>
   <button id="stopAnalysis" class="btn-stop">분석 취소</button>
+</div>
+
+<!-- [디자인 3번] 지도 우측 상단 미니 상태창형 방문자 표시 -->
+<div id="visitorMapBadge" class="visitor-map-badge">
+  <span class="dot"></span>
+  <span id="visitorMapText">Today <b>-</b> · Total <b>-</b></span>
 </div>
 
 <div class="control-wrapper" id="controlWrapper">
@@ -199,9 +254,6 @@
     <button id="toggleRoadLayer" style="width:100%; margin-bottom:6px; background:#f0f4f8; color:#0056b3; border-color:#0056b3; font-weight:bold;">한국어 도로/지명: ON</button>
     <button id="checkLOS" class="btn-los">정밀 단면 분석 (DEM 직독)</button>
     <div class="signature" id="appSignature"></div>
-    <div id="visitorCounter" style="text-align:center; margin-top:5px; line-height:0;">
-      <img src="https://hits.sh/crafting3750.github.io/Doha-Los.svg?style=flat-square&label=VISITORS&color=28a745&labelColor=555555" alt="Visitors" style="height:15px; border-radius:3px;" onerror="this.parentElement.style.display='none';" />
-    </div>
     <div class="resize-handle" id="resizeHandle" title="드래그하여 크기 조절"></div>
   </div>
 </div>
@@ -249,12 +301,48 @@
   let closeProfilePopup;
   let clearPointC;
 
+  // hits.sh SVG에서 Today / Total 방문자 숫자 추출 후 1번·3번 UI에 반영
+  async function loadVisitorStats() {
+    try {
+      const res = await fetch(`https://hits.sh/${APP_CONFIG.hitCounterPath}.svg`, { cache: 'no-store' });
+      if (!res.ok) return;
+      const svgText = await res.text();
+      // hits.sh SVG 내부의 "today / total" 텍스트 추출 (예: "3 / 128")
+      const match = svgText.match(/>(\d[\d,]*)\s*\/\s*(\d[\d,]*)</);
+      if (match) {
+        const todayCount = match[1];
+        const totalCount = match[2];
+
+        // [디자인 1번] 서명 영역 통합형 업데이트
+        const inlineEl = document.getElementById('visitorInlineText');
+        if (inlineEl) {
+          inlineEl.innerHTML = `Today: <span>${todayCount}</span> &nbsp;|&nbsp; Total: <span>${totalCount}</span>`;
+          inlineEl.style.display = 'block';
+        }
+
+        // [디자인 3번] 지도 우측 상단 미니 상태창형 업데이트
+        const mapBadge = document.getElementById('visitorMapBadge');
+        const mapText = document.getElementById('visitorMapText');
+        if (mapBadge && mapText) {
+          mapText.innerHTML = `Today <b>${todayCount}</b> &nbsp;·&nbsp; Total <b>${totalCount}</b>`;
+          mapBadge.style.display = 'flex';
+        }
+      }
+    } catch (e) {
+      // 오프라인 또는 네트워크 차단 시 조용히 숨김 유지
+    }
+  }
+
   window.onload = function() {
     // 최상단 APP_CONFIG 설정값을 화면 제목 및 서명 영역에 자동 반영
     document.title = `${APP_CONFIG.appName} Mobile - ${APP_CONFIG.version}`;
     document.getElementById('appSignature').innerHTML =
       `${APP_CONFIG.appName} (${APP_CONFIG.version}) · Last Update: ${APP_CONFIG.lastUpdate}<br>` +
-      `${APP_CONFIG.author}<br>${APP_CONFIG.notice}`;
+      `${APP_CONFIG.author}<br>${APP_CONFIG.notice}` +
+      `<div id="visitorInlineText" class="visitor-inline" style="display:none;"></div>`;
+
+    // 방문자 수 불러오기 실행
+    loadVisitorStats();
 
     const controlWrapper = document.getElementById('controlWrapper');
     const resizeHandle = document.getElementById('resizeHandle');
