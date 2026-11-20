@@ -12,12 +12,14 @@
   <script>
     const APP_CONFIG = {
       appName: "Doha LOS",
-      version: "v3.86",
+      version: "v3.84",
       lastUpdate: "2026.11.20.",
       author: "제 8기동사단 60기계화보병여단 전송반장 중사 임도현",
       notice: "Copyright © 2024-2026. All rights reserved.",
       // 방문자 카운터 경로 (GitHub Pages 주소의 도메인/저장소명)
-      hitCounterPath: "crafting3750.github.io/Doha-Los"
+      hitCounterPath: "crafting3750.github.io/Doha-Los",
+      // 어제 배포 후 접속자 수 추정치(Total에 더해지는 기본 시작값)
+      baseTotalOffset: 30
     };
   </script>
   <!-- ===================================================================== -->
@@ -341,41 +343,35 @@
     });
   }
 
-  // Today / Total 방문자 숫자 표시 (외부 카운터 연동 + 로컬 누적 백업)
+  // Today / Total 방문자 숫자 표시 (고정 네임스페이스 중앙 집계 + 로컬 백업)
   async function loadVisitorStats() {
     const mapText = document.getElementById('visitorMapText');
     const todayStr = getTodayKey();
-    const ns = 'doha_los_v384';
+    // 버전 변경(v3.84 -> v3.85 등)과 무관하게 유지되도록 고정 네임스페이스 사용
+    const fixedNs = 'doha_los_prod';
+    // 어제 접속자 수 보정값 (숫자가 아니면 0 처리)
+    const baseOffset = Math.max(0, Number(APP_CONFIG.baseTotalOffset) || 0);
 
-    // 1) 로컬 저장소 기반 기본값 준비 및 1회 방문 증가 처리
-    const sessionKey = `doha_counted_${todayStr}`;
-    let localTotal = parseInt(localStorage.getItem(`${ns}_total`) || '0', 10);
-    let localToday = parseInt(localStorage.getItem(`${ns}_today_${todayStr}`) || '0', 10);
+    // 로컬 캐시(중앙 서버 응답 실패 시 표시용 보조값, 기기별 카운트에는 사용하지 않음)
+    const cachedTotal = parseInt(localStorage.getItem(`${fixedNs}_cache_total`) || '0', 10);
+    const cachedToday = parseInt(localStorage.getItem(`${fixedNs}_cache_today_${todayStr}`) || '0', 10);
 
-    if (!sessionStorage.getItem(sessionKey)) {
-      localTotal += 1;
-      localToday += 1;
-      localStorage.setItem(`${ns}_total`, String(localTotal));
-      localStorage.setItem(`${ns}_today_${todayStr}`, String(localToday));
-      sessionStorage.setItem(sessionKey, '1');
-    }
-
-    let finalToday = Math.max(localToday, 1);
-    let finalTotal = Math.max(localTotal, 1);
+    let finalToday = cachedToday > 0 ? cachedToday : null;
+    let finalTotal = cachedTotal > 0 ? cachedTotal + baseOffset : (baseOffset > 0 ? baseOffset : null);
 
     try {
-      // 2) 외부 카운터 API(counterapi.dev) 시도
+      // 기기·브라우저·엔진과 무관하게 중앙 카운터에서 Today / Total을 1씩 증가시키고 조회
       const [totalRes, todayRes] = await Promise.allSettled([
-        fetch(`https://api.counterapi.dev/v1/${ns}/total/up`, { cache: 'no-store' }),
-        fetch(`https://api.counterapi.dev/v1/${ns}/today_${todayStr}/up`, { cache: 'no-store' })
+        fetch(`https://api.counterapi.dev/v1/${fixedNs}/total/up`, { cache: 'no-store' }),
+        fetch(`https://api.counterapi.dev/v1/${fixedNs}/today_${todayStr}/up`, { cache: 'no-store' })
       ]);
 
       if (totalRes.status === 'fulfilled' && totalRes.value.ok) {
         const tJson = await totalRes.value.json();
         const remoteTotal = Number(tJson?.count ?? tJson?.value);
         if (!Number.isNaN(remoteTotal) && remoteTotal > 0) {
-          finalTotal = remoteTotal;
-          localStorage.setItem(`${ns}_total`, String(finalTotal));
+          localStorage.setItem(`${fixedNs}_cache_total`, String(remoteTotal));
+          finalTotal = remoteTotal + baseOffset;
         }
       }
 
@@ -384,25 +380,36 @@
         const remoteToday = Number(dJson?.count ?? dJson?.value);
         if (!Number.isNaN(remoteToday) && remoteToday > 0) {
           finalToday = remoteToday;
-          localStorage.setItem(`${ns}_today_${todayStr}`, String(finalToday));
+          localStorage.setItem(`${fixedNs}_cache_today_${todayStr}`, String(finalToday));
         }
       }
 
-      // 3) 위 fetch가 환경/차단으로 숫자를 못 줬을 경우 JSONP 백업 시도
-      if (finalTotal <= 1) {
-        const jsonpData = await fetchJsonpCount(`https://api.counterapi.dev/v1/${ns}/total/up`);
-        const jpVal = Number(jsonpData?.count ?? jsonpData?.value);
-        if (!Number.isNaN(jpVal) && jpVal > 0) {
-          finalTotal = jpVal;
-          localStorage.setItem(`${ns}_total`, String(finalTotal));
+      // fetch 응답이 누락된 경우 JSONP로 중앙 카운터 재조회
+      if (finalTotal === null || (cachedTotal === 0 && baseOffset > 0)) {
+        const jsonpTotal = await fetchJsonpCount(`https://api.counterapi.dev/v1/${fixedNs}/total/up`);
+        const jpTotalVal = Number(jsonpTotal?.count ?? jsonpTotal?.value);
+        if (!Number.isNaN(jpTotalVal) && jpTotalVal > 0) {
+          localStorage.setItem(`${fixedNs}_cache_total`, String(jpTotalVal));
+          finalTotal = jpTotalVal + baseOffset;
+        }
+      }
+
+      if (finalToday === null) {
+        const jsonpToday = await fetchJsonpCount(`https://api.counterapi.dev/v1/${fixedNs}/today_${todayStr}/up`);
+        const jpTodayVal = Number(jsonpToday?.count ?? jsonpToday?.value);
+        if (!Number.isNaN(jpTodayVal) && jpTodayVal > 0) {
+          finalToday = jpTodayVal;
+          localStorage.setItem(`${fixedNs}_cache_today_${todayStr}`, String(finalToday));
         }
       }
     } catch (e) {
-      // 외부 요청이 막혀도 로컬 누적 숫자로 자연스럽게 표시
+      // 네트워크 오류 시 캐시된 값만 유지
     }
 
     if (mapText) {
-      mapText.innerHTML = `Today <b>${finalToday.toLocaleString()}</b> &nbsp;·&nbsp; Total <b>${finalTotal.toLocaleString()}</b>`;
+      const todayDisplay = finalToday !== null ? finalToday.toLocaleString() : '-';
+      const totalDisplay = finalTotal !== null ? finalTotal.toLocaleString() : '-';
+      mapText.innerHTML = `Today <b>${todayDisplay}</b> &nbsp;·&nbsp; Total <b>${totalDisplay}</b>`;
     }
   }
 
