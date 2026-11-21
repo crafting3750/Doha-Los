@@ -435,6 +435,28 @@
     }, 2600);
   }
 
+  // MGRS 문자열을 해당 그리드 셀의 중심(1m 단위 오차 방지) 위경도로 변환
+  function mgrsToCenteredLatLng(mgrsStr) {
+    const clean = (mgrsStr || '').replace(/\s+/g, '').toUpperCase();
+    const basePt = mgrs.toPoint(clean);
+    const lng = basePt[0];
+    const lat = basePt[1];
+
+    const match = clean.match(/^[0-9]{1,2}[C-HJ-NP-X][A-HJ-NP-Z]{2}([0-9]*)$/);
+    const digitsLen = match && match[1] ? match[1].length : 0;
+    const halfDigitsLen = Math.floor(digitsLen / 2);
+    const cellSizeMeters = halfDigitsLen > 0 ? Math.pow(10, 5 - halfDigitsLen) : 100000;
+    const halfOffsetMeters = cellSizeMeters * 0.5;
+
+    const latRad = (lat * Math.PI) / 180;
+    const metersPerLatDeg = 111319.490793;
+    const metersPerLngDeg = Math.max(10000, metersPerLatDeg * Math.cos(latRad));
+
+    const centeredLat = lat + (halfOffsetMeters / metersPerLatDeg);
+    const centeredLng = lng + (halfOffsetMeters / metersPerLngDeg);
+    return L.latLng(centeredLat, centeredLng);
+  }
+
   // 브라우저 화면 자체의 핀치 줌(100% 고정 해제 시도) 차단
   document.addEventListener('gesturestart', function(e) { e.preventDefault(); }, { passive: false });
   document.addEventListener('gesturechange', function(e) { e.preventDefault(); }, { passive: false });
@@ -618,10 +640,10 @@
       if (typeof mgrs !== 'undefined' && mgrs && typeof mgrs.toPoint === 'function') {
         const cleanMgrs = (APP_CONFIG.initialMgrs || "").replace(/\s+/g, '').toUpperCase();
         if (cleanMgrs.length >= 5) {
-          const pt = mgrs.toPoint(cleanMgrs);
-          if (Array.isArray(pt) && pt.length >= 2 && Number.isFinite(pt[0]) && Number.isFinite(pt[1])) {
-            startLng = pt[0];
-            startLat = pt[1];
+          const centered = mgrsToCenteredLatLng(cleanMgrs);
+          if (Number.isFinite(centered.lat) && Number.isFinite(centered.lng)) {
+            startLat = centered.lat;
+            startLng = centered.lng;
           }
         }
       }
@@ -852,27 +874,31 @@
       document.getElementById(prefix + 'SingleInput').value = mgrsStr;
     }
 
-    function updateA(latlng) {
+    function updateA(latlng, preserveInput = false) {
       clearLosOverlay();
       if (markerA) map.removeLayer(markerA);
       aCoord = latlng;
-      try {
-        if (typeof mgrs !== 'undefined' && mgrs.forward) {
-          fillMgrsSplits('a', mgrs.forward([latlng.lng, latlng.lat]));
-        }
-      } catch (e) {}
+      if (!preserveInput) {
+        try {
+          if (typeof mgrs !== 'undefined' && mgrs.forward) {
+            fillMgrsSplits('a', mgrs.forward([latlng.lng, latlng.lat], 5));
+          }
+        } catch (e) {}
+      }
       markerA = L.circleMarker(latlng, {radius:6, color:'red', weight:2, fillOpacity:1}).addTo(map);
     }
 
-    function updateB(latlng) {
+    function updateB(latlng, preserveInput = false) {
       clearLosOverlay();
       if (markerB) map.removeLayer(markerB);
       bCoord = latlng;
-      try {
-        if (typeof mgrs !== 'undefined' && mgrs.forward) {
-          fillMgrsSplits('b', mgrs.forward([latlng.lng, latlng.lat]));
-        }
-      } catch (e) {}
+      if (!preserveInput) {
+        try {
+          if (typeof mgrs !== 'undefined' && mgrs.forward) {
+            fillMgrsSplits('b', mgrs.forward([latlng.lng, latlng.lat], 5));
+          }
+        } catch (e) {}
+      }
       markerB = L.circleMarker(latlng, {radius:6, color:'blue', weight:2, fillOpacity:1}).addTo(map);
     }
 
@@ -896,8 +922,8 @@
     };
 
     map.on('click', e => {
-      if (mode === 'A') { updateA(e.latlng); mode = null; }
-      else if (mode === 'B') { updateB(e.latlng); mode = null; }
+      if (mode === 'A') { updateA(e.latlng, false); mode = null; }
+      else if (mode === 'B') { updateB(e.latlng, false); mode = null; }
     });
 
     document.getElementById('moveA').onclick = () => {
@@ -912,9 +938,9 @@
           const north = document.getElementById('aNorth').value.trim();
           combined = (zone + sq + east + north).replace(/\s+/g, '').toUpperCase();
         }
-        const d = mgrs.toPoint(combined);
-        updateA(L.latLng(d[1], d[0]));
-        map.setView([d[1], d[0]], 14);
+        const latlng = mgrsToCenteredLatLng(combined);
+        updateA(latlng, true);
+        map.setView(latlng, 14);
       } catch(e) {
         showToast("A지점 MGRS 입력 형식 오류 (예: 52SCH1234567890)");
       }
@@ -932,9 +958,9 @@
           const north = document.getElementById('bNorth').value.trim();
           combined = (zone + sq + east + north).replace(/\s+/g, '').toUpperCase();
         }
-        const d = mgrs.toPoint(combined);
-        updateB(L.latLng(d[1], d[0]));
-        map.setView([d[1], d[0]], 14);
+        const latlng = mgrsToCenteredLatLng(combined);
+        updateB(latlng, true);
+        map.setView(latlng, 14);
       } catch(e) {
         showToast("B지점 MGRS 입력 형식 오류 (예: 52SCH1234567890)");
       }
@@ -965,13 +991,13 @@
 
     document.getElementById('gpsToA').onclick = () => {
       if (gpsCoord) {
-        updateA(gpsCoord);
+        updateA(gpsCoord, false);
         showToast("현재 GPS 위치가 Point A로 지정되었습니다.");
       }
     };
     document.getElementById('gpsToB').onclick = () => {
       if (gpsCoord) {
-        updateB(gpsCoord);
+        updateB(gpsCoord, false);
         showToast("현재 GPS 위치가 Point B로 지정되었습니다.");
       }
     };
