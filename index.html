@@ -12,7 +12,7 @@
     const APP_CONFIG = {
       appName: "Doha LoS", // 앱 타이틀 명
       version: "v4.15", // 앱 버전
-      lastUpdate: "2026.11.21.", // 업데이트 날짜
+      // lastUpdate: "2026.11.21.", // 업데이트 날짜
       author: "제 8기동사단 60기계화보병여단 전송반장 중사 임도현", // 제작자
       notice: "Copyright © 2024-2026. All rights reserved.", // 제작기간, 저작권 표기
       baseTotalOffset: 32, // Total 접속자 증가
@@ -963,10 +963,16 @@
       };
     }
 
+//    const sigEl = document.getElementById('appSignature');
+//    if (sigEl) {
+//      sigEl.innerHTML =
+//        `Last Update: ${APP_CONFIG.lastUpdate}<br>` +
+//        `${APP_CONFIG.author}<br>${APP_CONFIG.notice}`;
+//    }
+
     const sigEl = document.getElementById('appSignature');
     if (sigEl) {
       sigEl.innerHTML =
-        `Last Update: ${APP_CONFIG.lastUpdate}<br>` +
         `${APP_CONFIG.author}<br>${APP_CONFIG.notice}`;
     }
 
