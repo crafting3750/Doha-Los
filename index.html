@@ -3,27 +3,40 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Doha LOS</title>
 
   <!-- ===================================================================== -->
-  <!-- ★ [사용자 설정 영역] 버전, 업데이트 날짜, 제작자 정보는 여기서 수정하세요 ★ -->
+  <!-- ★ [사용자 설정 영역] 버전, 시작 위치(MGRS), 초기 축척 등을 여기서 수정하세요 ★ -->
   <!-- ===================================================================== -->
   <script>
     const APP_CONFIG = {
       appName: "Doha LOS",
-      version: "v3.91",
+      version: "v4.0",
       lastUpdate: "2026.11.21.",
       author: "제 8기동사단 60기계화보병여단 전송반장 중사 임도현",
       notice: "Copyright © 2024-2026. All rights reserved.",
-      baseTotalOffset: 32
+      baseTotalOffset: 32,
+
+      // ★ 초기 지도 시작 위치 (MGRS 좌표) 및 초기 축척 설정 ★
+      // initialMgrs: 시작할 지점의 MGRS 좌표 (예: "52SCH2414394916" = 연천·동두천 인근)
+      // initialScaleRatio: 초기 지도 축척의 분모값 (예: 1150000 -> 약 1 : 1,150,000 축척, 50000 -> 약 1 : 50,000 축척)
+      initialMgrs: "52SCG2960092300",
+      initialScaleRatio: 1080000
     };
   </script>
   <!-- ===================================================================== -->
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
   <style>
-    html, body { height: 100%; margin: 0; padding: 0; background: #000; overflow: hidden; }
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      background: #000;
+      overflow: hidden;
+      touch-action: manipulation;
+    }
     #map { height: 100%; width: 100%; }
 
     /* 지도 우측 상단 미니 상태창 스타일 */
@@ -49,6 +62,101 @@
     .visitor-badge-float b {
       color: #69db7c;
       font-weight: 700;
+    }
+
+    /* 지도 우측 하단 줌 버튼(+/-) 및 축척 막대 컨테이너 */
+    .map-bottom-right-controls {
+      position: absolute;
+      right: 10px;
+      bottom: 22px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+      pointer-events: none;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    .zoom-btn-group {
+      display: flex;
+      flex-direction: column;
+      background: rgba(255, 255, 255, 0.94);
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+      overflow: hidden;
+      border: 1px solid rgba(0, 0, 0, 0.2);
+      pointer-events: auto;
+    }
+
+    .zoom-btn {
+      width: 34px;
+      height: 34px;
+      border: none;
+      border-radius: 0;
+      background: transparent;
+      color: #222;
+      font-size: 18px;
+      font-weight: bold;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
+      user-select: none;
+    }
+    .zoom-btn:first-child {
+      border-bottom: 1px solid #ddd;
+    }
+    .zoom-btn:active {
+      background: #e9ecef;
+    }
+
+    .scale-box {
+      background: rgba(18, 22, 28, 0.82);
+      color: #f8f9fa;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 6px;
+      padding: 5px 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 3px;
+      pointer-events: none;
+    }
+
+    .scale-ratio-text {
+      font-size: 10px;
+      font-weight: 700;
+      color: #ffd43b;
+      letter-spacing: 0.2px;
+      white-space: nowrap;
+    }
+
+    .scale-bar-row {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .scale-distance-text {
+      font-size: 10px;
+      font-weight: 600;
+      color: #fff;
+      white-space: nowrap;
+    }
+
+    .scale-bar-line {
+      height: 6px;
+      width: 60px;
+      border-left: 2px solid #fff;
+      border-right: 2px solid #fff;
+      border-bottom: 2px solid #fff;
+      box-sizing: border-box;
     }
 
     /* 좌측 상단 기준점 고정 및 비율 유지 스케일링 컨테이너 */
@@ -232,6 +340,21 @@
 <div id="map"></div>
 <div class="visitor-badge-float" id="visitorMapText">Today <b>-</b> &nbsp;·&nbsp; Total <b>-</b></div>
 
+<!-- 지도 우측 하단 + / - 버튼 및 실시간 축척 표시 영역 -->
+<div class="map-bottom-right-controls">
+  <div class="zoom-btn-group">
+    <button id="btnZoomIn" class="zoom-btn" title="지도 축척 확대 (+)">+</button>
+    <button id="btnZoomOut" class="zoom-btn" title="지도 축척 축소 (-)">−</button>
+  </div>
+  <div class="scale-box">
+    <div class="scale-ratio-text" id="scaleRatioText">축척 1 : -</div>
+    <div class="scale-bar-row">
+      <span class="scale-distance-text" id="scaleDistText">-</span>
+      <div class="scale-bar-line" id="scaleBarLine"></div>
+    </div>
+  </div>
+</div>
+
 <div id="los-popup">
   <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:4px;">
     <div>
@@ -272,6 +395,11 @@
 <script>
   let closeProfilePopup;
   let clearPointC;
+
+  // 브라우저 화면 자체의 핀치 줌(100% 고정 해제 시도) 차단
+  document.addEventListener('gesturestart', function(e) { e.preventDefault(); }, { passive: false });
+  document.addEventListener('gesturechange', function(e) { e.preventDefault(); }, { passive: false });
+  document.addEventListener('gestureend', function(e) { e.preventDefault(); }, { passive: false });
 
   // 오늘 날짜 키 생성 (로컬 기준 YYYY-MM-DD)
   function getTodayKey() {
@@ -363,6 +491,24 @@
     }
   }
 
+  // 목표 축척 분모(예: 1150000)와 위도를 기반으로 가장 근접한 Leaflet 줌 레벨 계산
+  function scaleDenominatorToZoom(scaleDenom, lat) {
+    const metersPerPixel = scaleDenom / 3779.527559; // 96 DPI 기준 (1m = 3779.53px)
+    const earthCircumference = 40075016.686;
+    const latRad = (lat * Math.PI) / 180;
+    const zoom = Math.log2((earthCircumference * Math.cos(latRad)) / (metersPerPixel * 256));
+    return Math.min(Math.max(zoom, 3), 19);
+  }
+
+  // 깔끔한 눈금 거리 계산 (1, 2, 5 단위)
+  function getNiceRoundNumber(num) {
+    const pow10 = Math.pow(10, Math.floor(Math.log10(num)));
+    const d = num / pow10;
+    if (d >= 5) return 5 * pow10;
+    if (d >= 2) return 2 * pow10;
+    return pow10;
+  }
+
   window.onload = function() {
     // 최상단 APP_CONFIG 설정값을 화면 제목 및 서명 영역에 자동 반영
     document.title = `${APP_CONFIG.appName} Mobile - ${APP_CONFIG.version}`;
@@ -409,10 +555,84 @@
     window.addEventListener('touchmove', (e) => { if (isResizing) { e.preventDefault(); if (e.touches.length === 1) onResizeMove(e.touches[0].clientX, e.touches[0].clientY); } }, { passive: false });
     window.addEventListener('touchend', onResizeEnd);
 
-    const map = L.map('map', { zoomControl: false }).setView([37.9, 127.0], 9);
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Esri' }).addTo(map);
+    // APP_CONFIG.initialMgrs와 APP_CONFIG.initialScaleRatio로 시작 좌표 및 축척 계산
+    let startLat = 37.9;
+    let startLng = 127.0;
+    try {
+      const cleanMgrs = (APP_CONFIG.initialMgrs || "").replace(/\s+/g, '').toUpperCase();
+      if (cleanMgrs.length >= 5) {
+        const pt = mgrs.toPoint(cleanMgrs);
+        startLng = pt[0];
+        startLat = pt[1];
+      }
+    } catch (e) {
+      // MGRS 파싱 오류 시 기본 좌표 유지
+    }
+
+    const targetScaleDenom = Number(APP_CONFIG.initialScaleRatio) || 1150000;
+    const initialZoom = scaleDenominatorToZoom(targetScaleDenom, startLat);
+
+    const map = L.map('map', {
+      zoomControl: false,
+      zoomSnap: 0.25,
+      zoomDelta: 1
+    }).setView([startLat, startLng], initialZoom);
+
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Esri', maxZoom: 19 }).addTo(map);
 
     const googleRoadOverlay = L.tileLayer('https://mt1.google.com/vt/lyrs=h&hl=ko&x={x}&y={y}&z={z}', { attribution: 'Google', maxZoom: 20, zIndex: 500 }).addTo(map);
+
+    // 우측 하단 축척 막대 및 1 : OOO 축척 비율 실시간 업데이트
+    function updateScaleIndicator() {
+      const center = map.getCenter();
+      const zoom = map.getZoom();
+      const latRad = (center.lat * Math.PI) / 180;
+      const metersPerPixel = (40075016.686 * Math.cos(latRad)) / (256 * Math.pow(2, zoom));
+
+      // 현재 1 : N 축척 계산 (96 DPI 표준 기준, 천 단위 반올림으로 가독성 확보)
+      const rawDenom = metersPerPixel * 3779.527559;
+      let roundedDenom;
+      if (rawDenom >= 100000) {
+        roundedDenom = Math.round(rawDenom / 10000) * 10000;
+      } else if (rawDenom >= 10000) {
+        roundedDenom = Math.round(rawDenom / 1000) * 1000;
+      } else {
+        roundedDenom = Math.round(rawDenom / 100) * 100;
+      }
+
+      const ratioEl = document.getElementById('scaleRatioText');
+      if (ratioEl) {
+        ratioEl.innerText = `축척 1 : ${Math.max(100, roundedDenom).toLocaleString()}`;
+      }
+
+      // 축척 막대 길이(최대 90px 기준) 및 거리 텍스트 계산
+      const maxBarPx = 85;
+      const maxMeters = metersPerPixel * maxBarPx;
+      const niceMeters = getNiceRoundNumber(maxMeters);
+      const barWidthPx = Math.max(24, Math.round(niceMeters / metersPerPixel));
+
+      const barEl = document.getElementById('scaleBarLine');
+      const distEl = document.getElementById('scaleDistText');
+      if (barEl) barEl.style.width = `${barWidthPx}px`;
+      if (distEl) {
+        distEl.innerText = niceMeters >= 1000
+          ? `${(niceMeters / 1000)} km`
+          : `${niceMeters} m`;
+      }
+    }
+
+    map.on('zoom move', updateScaleIndicator);
+    updateScaleIndicator();
+
+    // + / - 버튼으로 지도 축척(줌) 조절 (화면 확대 비율은 100% 고정 유지)
+    document.getElementById('btnZoomIn').onclick = function(e) {
+      e.stopPropagation();
+      map.zoomIn(1);
+    };
+    document.getElementById('btnZoomOut').onclick = function(e) {
+      e.stopPropagation();
+      map.zoomOut(1);
+    };
 
     let isRoadVisible = true;
     document.getElementById('toggleRoadLayer').onclick = function() {
