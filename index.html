@@ -11,7 +11,7 @@
   <script>
     const APP_CONFIG = {
       appName: "Doha LoS", // 앱 타이틀 명
-      version: "v4.16", // 앱 버전
+      version: "v4.15", // 앱 버전
       lastUpdate: "2026.11.21.", // 업데이트 날짜
       author: "제 8기동사단 60기계화보병여단 전송반장 중사 임도현", // 제작자
       notice: "Copyright © 2024-2026. All rights reserved.", // 제작기간, 저작권 표기
@@ -20,6 +20,77 @@
       initialMgrs: "52SCG2952092460", // 시작할 지점의 MGRS 좌표
       initialScaleRatio: 1080000, // 초기실행 지도 축적
 
+      updateHistoryTitle: "Doha LoS 패치노트", // 패치노트 창 상단 제목
+      updateHistoryInquiry: "오류 신고 및 문의 : 중사 임도현(a21-509289@mnd.mil)", // 패치노트 제목 옆 안내/문의 문구
+      updateHistoryItems: [ // 패치노트 (날짜/시간/버전/내용 자유 수정 가능)
+        {
+          date: "2026.11.21.",
+          time: "12:40",
+          version: "v4.15",
+          desc: "• 제어판에 '패치노트' 버튼 및 지도 상단 팝업 추가\n• 패치노트에 날짜, 시간, 버전, 상세 내용 표시\n• 패치노트 창 상단 헤더 고정 및 내용 스크롤 적용"
+        },
+        {
+          date: "2026.11.21.",
+          time: "10:10",
+          version: "v4.13",
+          desc: "• 제어판에 '사용설명서' 버튼 및 지도 상단 팝업 추가\n• 사용설명서에 제목, 상세 내용 표시\n• 사용설명서 창 상단 헤더 고정 및 내용 스크롤 적용"
+        },
+        {
+          date: "2026.11.20.",
+          time: "21:15",
+          version: "v4.12",
+          desc: "• 지도 우측 하단 + / − 줌 버튼 연타 누적 및 실시간 축척 막대 표시\n• 지도 우측 상단 Today / Total 방문자 카운터 배지 추가\n• GPS 위치 A·B 지정 및 수신 해제 버튼 구성"
+        },
+        {
+          date: "2026.11.19.",
+          time: "15:30",
+          version: "v3.7",
+          desc: "• AWS Terrarium DEM 고도 데이터 기반 가시선(LOS) 단면 분석 제공\n• 단면 그래프 터치·드래그로 중간 C지점 고도·MGRS·차폐 여부 확인\n• GitHub 업로드 및 배포 완료"
+        },
+        {
+          date: "2026.11.13.",
+          time: "12:48",
+          version: "v2.1",
+          desc: "• 장거리(10km 이상) 구간 분석 시 가시선(LoS) 결과가 출력되지 않던 오류 수정\n• 장거리 샘플링 구간 증가에 따른 지형 고도 데이터 추출 및 단면 그래프 렌더링 누락 현상 개선\n• 10km 이상 장거리 A·B 지점 간 가시선(LoS) 및 차폐 여부 정상 표시 확인"
+        },
+        {
+          date: "2026.11.12.",
+          time: "",
+          version: "v2.0",
+          desc: "• MGRS 분할 입력(구역·식별·동거차·북거차) 필드 적용\n• A·B 10m 안테나 마스트 기준 가시선(LOS) 계산 및 10m 간격 지형 샘플링 적용\n• 단면 그래프 구간 터치·드래그 시 중간 지점 정보 표시 및 지도 마커 연동"
+        },
+        {
+          date: "2026.08.15.",
+          time: "",
+          version: "v1.7",
+          desc: "• 모바일 현장 활용 중심 UI/UX 개선 및 좌표 입력 방식 고도화\n• 기기 GPS 연동 및 방문자 추적 기능 구성"
+        },
+        {
+          date: "2026.04.27.",
+          time: "",
+          version: "v1.6",
+          desc: "• 단일 HTML 파일 기반 가시선(LoS) 지형 단면 분석 웹앱 초기 배포"
+        },
+        {
+          date: "2026.04.26.",
+          time: "",
+          version: "v1.0",
+          desc: "• Point A / Point B MGRS 좌표 입력 및 지도 터치 지정·해제·이동 기능 구현\n• 현재 위치(GPS) 수신 및 빨간/파란 마커·가시선 점선 표시 적용\n• 지형 고도 단면 그래프 렌더링 및 시계/통신 가시선(LoS) 차폐 여부 판독 제공"
+        },
+        {
+          date: "2024-2026",
+          time: "",
+          version: "build",
+          desc: "• [아키텍처 설계] 2024–2026 전장 가시선(LoS) 분석 및 전송·지휘 운용 지원을 위한 경량 모바일 웹 기반 시스템 아키텍처 수립\n• [운용 동선 구조화] 별도 설치형 프로그램 없이 브라우저에서 즉시 접속해 좌표 지정, 지형 판독, 단면 검토까지 이어지는 단일 운용 흐름 설계\n• [공간정보 레이어 기반] 위성영상 기반 전술 지형 판독 체계 마련 및 도로·지명 정보 오버레이 구조 설계\n• [DEM 파이프라인 구축] 고도 타일(DEM) 직독 및 캐싱 파이프라인을 구축해 대량 표고 데이터 추출 속도와 네트워크 효율 확보\n• [지구 곡률·전파 모델링] 4/3 유효지구반경 기반 곡률 보정과 안테나 마스트 기준 시계·통신 차폐 판정 연산 모델 정립\n• [단면 프로파일 렌더링] 지형 곡선, 가시선 경로, 차폐/확보 상태를 직관적으로 식별할 수 있는 단면 프로파일 시각화 체계 구현\n• [구간별 차폐 판정] 기준 지점 설정 시 전·후방 구간별 가시선 확보 및 차폐 여부를 분리 산출하는 분석 로직 구축\n• [양방향 동기화 체계] 지도 마커·좌표 상태와 단면 프로파일 커서·정보 표시 영역 간 실시간 양방향 동기화 구현\n• [좌표 변환·보정 체계] 군사 좌표 체계 기반 정밀 위치 산출 및 입력 포맷 편차에 따른 좌표 오차 보정 로직 적용\n• [인터페이스 반응성 개선] 화면 비율 유지 제어판 조절 구조와 반복 입력·화면 전환 시 끊김 없는 UI 반응성 확보\n• [장애 분석 및 결함 조치] 모바일 터치 이벤트 간섭, 로컬 파일(file://) 환경 GPS 제한, 타일 수신 예외 등 실전 테스트에서 도출된 오류 원인 분석 및 방어 코드 적용\n• [운영 가용성 확보] HTTPS 웹 배포 환경 검증, 접속 통계 집계 연동, 사용설명서·패치노트 내장화를 통한 현장 상시 가용성 강화\n• [지속 고도화 및 이관성] 2년간 축적된 운용 피드백과 결함 조치 이력을 바탕으로 실전 운용 신뢰성과 유지보수성 지속 개선"
+        },
+        {
+          date: "2024.04.28",
+          time: "",
+          version: "alpha",
+          desc: "• 모바일 호환 가시선(LoS) 지형 단면 분석 웹앱 Doha LoS 초기 구축"
+        },
+      ],
+      
       manualTitle: "Doha LoS 사용설명서", // 사용설명서 상단 제목
       manualInquiry: "오류 신고 및 문의 : 중사 임도현(a21-509289@mnd.mil)", // 사용설명서 제목 옆 안내/문의 문구
       manualItems: [ // 사용설명서 항목 (제목/설명 자유 수정 가능)
@@ -312,7 +383,7 @@
       background: #ffe0b2;
     }
 
-    /* 제어판 최상단 앱 타이틀 및 사용설명서 버튼 */
+    /* 제어판 최상단 앱 타이틀 및 버튼 영역 */
     .app-header-row {
       display: flex;
       justify-content: space-between;
@@ -332,6 +403,27 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
+    .manual-btn-stack {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 3px;
+      flex-shrink: 0;
+    }
+    .btn-patchnote {
+      padding: 2px 6px;
+      font-size: 9px;
+      font-weight: 700;
+      background: #f4f6f8;
+      color: #334155;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      white-space: nowrap;
+      text-align: center;
+    }
+    .btn-patchnote:active {
+      background: #e2e8f0;
+    }
     .btn-manual {
       padding: 3px 6px;
       font-size: 9px;
@@ -346,8 +438,29 @@
     .btn-manual:active {
       background: #d2e3fc;
     }
+    .history-meta-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+    .history-version-badge {
+      background: #eef4ff;
+      color: #0b57d0;
+      border: 1px solid #bfdbfe;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-size: 10px;
+      font-weight: 700;
+    }
+    .history-datetime-text {
+      font-size: 10px;
+      font-weight: 600;
+      color: #475569;
+    }
 
-    /* 지도 상단 사용설명서 오버레이 창 (헤더 고정 + 내용 스크롤) */
+    /* 지도 상단 사용설명서·패치노트 오버레이 창 (헤더 고정 + 내용 스크롤) */
     #manual-panel {
       display: none;
       position: fixed;
@@ -469,7 +582,10 @@
   <div class="control-box" id="controlBox">
     <div class="app-header-row">
       <div class="app-main-title" id="appMainTitle">Doha LoS</div>
-      <button type="button" id="openManualBtn" class="btn-manual">사용설명서</button>
+      <div class="manual-btn-stack">
+        <button type="button" id="openUpdateBtn" class="btn-patchnote">패치노트</button>
+        <button type="button" id="openManualBtn" class="btn-manual">사용설명서</button>
+      </div>
     </div>
     <div class="input-group">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:3px;">
@@ -527,7 +643,7 @@
 <div id="map"></div>
 <div class="visitor-badge-float" id="visitorMapText">Today <b>-</b> &nbsp;·&nbsp; Total <b>-</b></div>
 
-<!-- 지도 상단 사용설명서 패널 -->
+<!-- 지도 상단 사용설명서 / 패치노트 패널 -->
 <div id="manual-panel">
   <div class="manual-header">
     <div class="manual-header-left">
@@ -763,38 +879,81 @@
       mainTitleEl.innerText = `${APP_CONFIG.appName} (${APP_CONFIG.version})`;
     }
 
-    // APP_CONFIG 기반 사용설명서 렌더링 및 토글 설정
+    // APP_CONFIG 기반 사용설명서 / 패치노트 렌더링 및 토글 설정
     const manualPanel = document.getElementById('manual-panel');
     const manualTitleEl = document.getElementById('manualPanelTitle');
     const manualInquiryEl = document.getElementById('manualPanelInquiry');
     const manualListEl = document.getElementById('manualContentList');
-    if (manualTitleEl) {
-      manualTitleEl.innerText = APP_CONFIG.manualTitle || `${APP_CONFIG.appName} 사용설명서`;
+    let currentOverlayMode = 'manual';
+
+    function renderOverlayContent(mode) {
+      currentOverlayMode = mode;
+      if (mode === 'update') {
+        if (manualTitleEl) {
+          manualTitleEl.innerText = APP_CONFIG.updateHistoryTitle || `${APP_CONFIG.appName} 패치노트`;
+        }
+        if (manualInquiryEl) {
+          manualInquiryEl.innerText = APP_CONFIG.updateHistoryInquiry || APP_CONFIG.manualInquiry || '';
+        }
+        if (manualListEl) {
+          const historyItems = Array.isArray(APP_CONFIG.updateHistoryItems) ? APP_CONFIG.updateHistoryItems : [];
+          manualListEl.innerHTML = historyItems.map((item) => `
+            <div class="manual-card">
+              <div class="history-meta-row">
+                <span class="history-version-badge">${item.version || ''}</span>
+                <span class="history-datetime-text">${item.date || ''} ${item.time || ''}</span>
+              </div>
+              <div class="manual-card-desc">${item.desc || ''}</div>
+            </div>
+          `).join('');
+        }
+      } else {
+        if (manualTitleEl) {
+          manualTitleEl.innerText = APP_CONFIG.manualTitle || `${APP_CONFIG.appName} 사용설명서`;
+        }
+        if (manualInquiryEl) {
+          manualInquiryEl.innerText = APP_CONFIG.manualInquiry || '';
+        }
+        if (manualListEl) {
+          const items = Array.isArray(APP_CONFIG.manualItems) ? APP_CONFIG.manualItems : [];
+          manualListEl.innerHTML = items.map((item) => `
+            <div class="manual-card">
+              <div class="manual-card-title">${item.title || ''}</div>
+              <div class="manual-card-desc">${item.desc || ''}</div>
+            </div>
+          `).join('');
+        }
+      }
+      if (manualListEl) {
+        manualListEl.scrollTop = 0;
+      }
     }
-    if (manualInquiryEl) {
-      manualInquiryEl.innerText = APP_CONFIG.manualInquiry || '';
-    }
-    if (manualListEl) {
-      const items = Array.isArray(APP_CONFIG.manualItems) ? APP_CONFIG.manualItems : [];
-      manualListEl.innerHTML = items.map((item) => `
-        <div class="manual-card">
-          <div class="manual-card-title">${item.title || ''}</div>
-          <div class="manual-card-desc">${item.desc || ''}</div>
-        </div>
-      `).join('');
-    }
-    toggleManualPanel = function(forceOpen = null) {
+
+    toggleManualPanel = function(forceOpen = null, mode = currentOverlayMode) {
       if (!manualPanel) return;
       const isVisible = manualPanel.style.display === 'flex';
-      const nextOpen = forceOpen !== null ? forceOpen : !isVisible;
-      manualPanel.style.display = nextOpen ? 'flex' : 'none';
+      const nextOpen = forceOpen !== null ? forceOpen : (!isVisible || currentOverlayMode !== mode);
+      if (nextOpen) {
+        renderOverlayContent(mode);
+        manualPanel.style.display = 'flex';
+      } else {
+        manualPanel.style.display = 'none';
+      }
     };
+
     const openManualBtn = document.getElementById('openManualBtn');
+    const openUpdateBtn = document.getElementById('openUpdateBtn');
     const closeManualBtn = document.getElementById('closeManualBtn');
     if (openManualBtn) {
       openManualBtn.onclick = (e) => {
         e.stopPropagation();
-        toggleManualPanel();
+        toggleManualPanel(null, 'manual');
+      };
+    }
+    if (openUpdateBtn) {
+      openUpdateBtn.onclick = (e) => {
+        e.stopPropagation();
+        toggleManualPanel(null, 'update');
       };
     }
     if (closeManualBtn) {
