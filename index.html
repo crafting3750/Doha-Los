@@ -6,26 +6,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Doha LOS</title>
 
-  <!-- ===================================================================== -->
-  <!-- ★ [사용자 설정 영역] 버전, 시작 위치(MGRS), 초기 축척 등을 여기서 수정하세요 ★ -->
-  <!-- ===================================================================== -->
+  <!-- ================= -->
+  <!-- ★ [사용자 설정 영역] -->
+  <!-- ================= -->
   <script>
     const APP_CONFIG = {
       appName: "Doha LOS",
-      version: "v4.0",
+      version: "v4.1",
       lastUpdate: "2026.11.21.",
       author: "제 8기동사단 60기계화보병여단 전송반장 중사 임도현",
       notice: "Copyright © 2024-2026. All rights reserved.",
       baseTotalOffset: 32,
 
-      // ★ 초기 지도 시작 위치 (MGRS 좌표) 및 초기 축척 설정 ★
-      // initialMgrs: 시작할 지점의 MGRS 좌표 (예: "52SCH2414394916" = 연천·동두천 인근)
-      // initialScaleRatio: 초기 지도 축척의 분모값 (예: 1150000 -> 약 1 : 1,150,000 축척, 50000 -> 약 1 : 50,000 축척)
+      // initialMgrs: 시작할 지점의 MGRS 좌표
+      // initialScaleRatio: 초기실행 지도 축적
       initialMgrs: "52SCG2960092300",
       initialScaleRatio: 1080000
     };
   </script>
-  <!-- ===================================================================== -->
+  <!-- ================= -->
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
   <style>
@@ -570,17 +569,30 @@
     }
 
     const targetScaleDenom = Number(APP_CONFIG.initialScaleRatio) || 1150000;
-    const initialZoom = scaleDenominatorToZoom(targetScaleDenom, startLat);
+    const initialZoom = Math.round(scaleDenominatorToZoom(targetScaleDenom, startLat));
 
     const map = L.map('map', {
       zoomControl: false,
-      zoomSnap: 0.25,
-      zoomDelta: 1
+      zoomSnap: 1,
+      zoomDelta: 1,
+      zoomAnimation: true,
+      fadeAnimation: true
     }).setView([startLat, startLng], initialZoom);
 
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Esri', maxZoom: 19 }).addTo(map);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Esri',
+      maxZoom: 19,
+      keepBuffer: 4,
+      updateWhenZooming: false
+    }).addTo(map);
 
-    const googleRoadOverlay = L.tileLayer('https://mt1.google.com/vt/lyrs=h&hl=ko&x={x}&y={y}&z={z}', { attribution: 'Google', maxZoom: 20, zIndex: 500 }).addTo(map);
+    const googleRoadOverlay = L.tileLayer('https://mt1.google.com/vt/lyrs=h&hl=ko&x={x}&y={y}&z={z}', {
+      attribution: 'Google',
+      maxZoom: 20,
+      zIndex: 500,
+      keepBuffer: 4,
+      updateWhenZooming: false
+    }).addTo(map);
 
     // 우측 하단 축척 막대 및 1 : OOO 축척 비율 실시간 업데이트
     function updateScaleIndicator() {
@@ -624,15 +636,57 @@
     map.on('zoom move', updateScaleIndicator);
     updateScaleIndicator();
 
-    // + / - 버튼으로 지도 축척(줌) 조절 (화면 확대 비율은 100% 고정 유지)
-    document.getElementById('btnZoomIn').onclick = function(e) {
+    // + / - 버튼 연타 시 쿨타임 없이 목표 줌 레벨 누적 및 자연스러운 애니메이션 전환
+    let targetZoomLevel = map.getZoom();
+    let isButtonZooming = false;
+
+    map.on('zoomend', function() {
+      if (isButtonZooming) {
+        isButtonZooming = false;
+        if (Math.round(map.getZoom()) !== targetZoomLevel) {
+          isButtonZooming = true;
+          map.setZoom(targetZoomLevel, { animate: true });
+        }
+      } else {
+        targetZoomLevel = Math.round(map.getZoom());
+      }
+    });
+
+    function handleFastZoom(delta) {
+      const minZ = map.getMinZoom();
+      const maxZ = map.getMaxZoom();
+      targetZoomLevel = Math.min(Math.max(targetZoomLevel + delta, minZ), maxZ);
+      isButtonZooming = true;
+      map.setZoom(targetZoomLevel, { animate: true });
+    }
+
+    const btnZoomIn = document.getElementById('btnZoomIn');
+    const btnZoomOut = document.getElementById('btnZoomOut');
+    let lastTouchTime = 0;
+
+    btnZoomIn.addEventListener('touchstart', function(e) {
+      e.preventDefault();
       e.stopPropagation();
-      map.zoomIn(1);
-    };
-    document.getElementById('btnZoomOut').onclick = function(e) {
+      lastTouchTime = Date.now();
+      handleFastZoom(1);
+    }, { passive: false });
+    btnZoomIn.addEventListener('click', function(e) {
       e.stopPropagation();
-      map.zoomOut(1);
-    };
+      if (Date.now() - lastTouchTime < 400) return;
+      handleFastZoom(1);
+    });
+
+    btnZoomOut.addEventListener('touchstart', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      lastTouchTime = Date.now();
+      handleFastZoom(-1);
+    }, { passive: false });
+    btnZoomOut.addEventListener('click', function(e) {
+      e.stopPropagation();
+      if (Date.now() - lastTouchTime < 400) return;
+      handleFastZoom(-1);
+    });
 
     let isRoadVisible = true;
     document.getElementById('toggleRoadLayer').onclick = function() {
