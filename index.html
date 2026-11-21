@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Doha LOS</title>
 
-  <!-- ===================================================================== -->
+  <!-- ===== -->
   <!-- ★ [사용자 설정 영역] -->
-  <!-- ===================================================================== -->
+  <!-- ===== -->
   <script>
     const APP_CONFIG = {
       appName: "Doha LOS",
@@ -22,8 +22,9 @@
       initialMgrs: "52SCG2960092300",
       initialScaleRatio: 1080000
     };
+    document.title = APP_CONFIG.appName;
   </script>
-  <!-- ===================================================================== -->
+  <!-- ===== -->
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
   <style>
@@ -35,7 +36,13 @@
       overflow: hidden;
       touch-action: manipulation;
     }
-    #map { height: 100%; width: 100%; }
+    #map {
+      position: absolute;
+      inset: 0;
+      height: 100%;
+      width: 100%;
+      z-index: 1;
+    }
 
     /* 지도 우측 상단 미니 상태창 스타일 */
     .visitor-badge-float {
@@ -269,9 +276,32 @@
     .btn-clear-c:active {
       background: #ffe0b2;
     }
+
+    /* 알림 메시지 배너 (alert 대체) */
+    .toast-banner {
+      display: none;
+      position: fixed;
+      top: 44px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 4000;
+      background: rgba(20, 24, 30, 0.92);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+      max-width: 85%;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
+
+<div id="toastBanner" class="toast-banner"></div>
 
 <div id="loading-overlay">
   <div class="loader-spinner"></div>
@@ -393,6 +423,19 @@
 <script>
   let closeProfilePopup;
   let clearPointC;
+  let toastTimer = null;
+
+  // 화면 상단 안내 배너 표시 함수
+  function showToast(msg) {
+    const el = document.getElementById('toastBanner');
+    if (!el) return;
+    el.innerText = msg;
+    el.style.display = 'block';
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      el.style.display = 'none';
+    }, 2600);
+  }
 
   // 브라우저 화면 자체의 핀치 줌(100% 고정 해제 시도) 차단
   document.addEventListener('gesturestart', function(e) { e.preventDefault(); }, { passive: false });
@@ -449,7 +492,7 @@
     return null;
   }
 
-  // Today / Total 방문자 숫자 표시 (고정 키 중앙 집계 + 어제 30명 보정값 적용)
+  // Today / Total 방문자 숫자 표시 (고정 키 중앙 집계 + 보정값 적용)
   async function loadVisitorStats() {
     const mapText = document.getElementById('visitorMapText');
     const todayStr = getTodayKey().replace(/-/g, '_');
@@ -457,8 +500,14 @@
     const todayKey = `doha_los_prod_today_${todayStr}`;
     const baseOffset = Math.max(0, Number(APP_CONFIG.baseTotalOffset) || 0);
 
-    const cachedTotal = parseInt(localStorage.getItem(`${totalKey}_cache`) || '0', 10);
-    const cachedToday = parseInt(localStorage.getItem(`${todayKey}_cache`) || '0', 10);
+    let cachedTotal = 0;
+    let cachedToday = 0;
+    try {
+      cachedTotal = parseInt(localStorage.getItem(`${totalKey}_cache`) || '0', 10);
+      cachedToday = parseInt(localStorage.getItem(`${todayKey}_cache`) || '0', 10);
+    } catch (e) {
+      // 스토리지 접근 제한 환경 무시
+    }
 
     let finalToday = cachedToday > 0 ? cachedToday : null;
     let finalTotal = cachedTotal > 0 ? cachedTotal + baseOffset : null;
@@ -470,13 +519,13 @@
       ]);
 
       if (remoteTotal !== null && remoteTotal > 0) {
-        localStorage.setItem(`${totalKey}_cache`, String(remoteTotal));
+        try { localStorage.setItem(`${totalKey}_cache`, String(remoteTotal)); } catch (e) {}
         finalTotal = remoteTotal + baseOffset;
       }
 
       if (remoteToday !== null && remoteToday > 0) {
         finalToday = remoteToday;
-        localStorage.setItem(`${todayKey}_cache`, String(finalToday));
+        try { localStorage.setItem(`${todayKey}_cache`, String(finalToday)); } catch (e) {}
       }
     } catch (e) {
       // 네트워크 오류 시 캐시 유지
@@ -489,17 +538,19 @@
     }
   }
 
-  // 목표 축척 분모(예: 1150000)와 위도를 기반으로 가장 근접한 Leaflet 줌 레벨 계산
+  // 목표 축척 분모(예: 1080000)와 위도를 기반으로 가장 근접한 Leaflet 줌 레벨 계산
   function scaleDenominatorToZoom(scaleDenom, lat) {
-    const metersPerPixel = scaleDenom / 3779.527559; // 96 DPI 기준 (1m = 3779.53px)
+    const metersPerPixel = scaleDenom / 3779.527559;
     const earthCircumference = 40075016.686;
     const latRad = (lat * Math.PI) / 180;
     const zoom = Math.log2((earthCircumference * Math.cos(latRad)) / (metersPerPixel * 256));
-    return Math.min(Math.max(zoom, 3), 19);
+    if (Number.isNaN(zoom) || !Number.isFinite(zoom)) return 9;
+    return Math.min(Math.max(zoom, 3), 18);
   }
 
   // 깔끔한 눈금 거리 계산 (1, 2, 5 단위)
   function getNiceRoundNumber(num) {
+    if (!num || num <= 0 || !Number.isFinite(num)) return 100;
     const pow10 = Math.pow(10, Math.floor(Math.log10(num)));
     const d = num / pow10;
     if (d >= 5) return 5 * pow10;
@@ -507,24 +558,33 @@
     return pow10;
   }
 
-  window.onload = function() {
+  function initDohaLosApp() {
+    if (window.__dohaLosInitialized) return;
+    window.__dohaLosInitialized = true;
+
     // 최상단 APP_CONFIG.appName만 페이지 제목에 반영
     document.title = APP_CONFIG.appName;
-    document.getElementById('appSignature').innerHTML =
-      `${APP_CONFIG.appName} (${APP_CONFIG.version}) · Last Update: ${APP_CONFIG.lastUpdate}<br>` +
-      `${APP_CONFIG.author}<br>${APP_CONFIG.notice}`;
+    const sigEl = document.getElementById('appSignature');
+    if (sigEl) {
+      sigEl.innerHTML =
+        `${APP_CONFIG.appName} (${APP_CONFIG.version}) · Last Update: ${APP_CONFIG.lastUpdate}<br>` +
+        `${APP_CONFIG.author}<br>${APP_CONFIG.notice}`;
+    }
 
     loadVisitorStats();
 
     const controlWrapper = document.getElementById('controlWrapper');
     const resizeHandle = document.getElementById('resizeHandle');
     const baseWidth = 215;
-    let currentScale = parseFloat(localStorage.getItem('doha_ui_scale')) || 1.0;
+    let currentScale = 1.0;
+    try {
+      currentScale = parseFloat(localStorage.getItem('doha_ui_scale')) || 1.0;
+    } catch (e) {}
 
     function applyBoxScale(scale) {
       currentScale = Math.min(Math.max(scale, 0.65), 1.6);
       controlWrapper.style.transform = `scale(${currentScale})`;
-      localStorage.setItem('doha_ui_scale', currentScale);
+      try { localStorage.setItem('doha_ui_scale', currentScale); } catch (e) {}
     }
     applyBoxScale(currentScale);
 
@@ -557,18 +617,27 @@
     let startLat = 37.9;
     let startLng = 127.0;
     try {
-      const cleanMgrs = (APP_CONFIG.initialMgrs || "").replace(/\s+/g, '').toUpperCase();
-      if (cleanMgrs.length >= 5) {
-        const pt = mgrs.toPoint(cleanMgrs);
-        startLng = pt[0];
-        startLat = pt[1];
+      if (typeof mgrs !== 'undefined' && mgrs && typeof mgrs.toPoint === 'function') {
+        const cleanMgrs = (APP_CONFIG.initialMgrs || "").replace(/\s+/g, '').toUpperCase();
+        if (cleanMgrs.length >= 5) {
+          const pt = mgrs.toPoint(cleanMgrs);
+          if (Array.isArray(pt) && pt.length >= 2 && Number.isFinite(pt[0]) && Number.isFinite(pt[1])) {
+            startLng = pt[0];
+            startLat = pt[1];
+          }
+        }
       }
     } catch (e) {
       // MGRS 파싱 오류 시 기본 좌표 유지
     }
 
-    const targetScaleDenom = Number(APP_CONFIG.initialScaleRatio) || 1150000;
+    const targetScaleDenom = Number(APP_CONFIG.initialScaleRatio) || 1080000;
     const initialZoom = Math.round(scaleDenominatorToZoom(targetScaleDenom, startLat));
+
+    if (typeof L === 'undefined') {
+      showToast("지도 라이브러리(Leaflet) 로딩 실패 - 새로고침해 주세요.");
+      return;
+    }
 
     const map = L.map('map', {
       zoomControl: false,
@@ -593,6 +662,10 @@
       updateWhenZooming: false
     }).addTo(map);
 
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 100);
+
     // 우측 하단 축척 막대 및 1 : OOO 축척 비율 실시간 업데이트
     function updateScaleIndicator() {
       const center = map.getCenter();
@@ -600,7 +673,6 @@
       const latRad = (center.lat * Math.PI) / 180;
       const metersPerPixel = (40075016.686 * Math.cos(latRad)) / (256 * Math.pow(2, zoom));
 
-      // 현재 1 : N 축척 계산 (96 DPI 표준 기준, 천 단위 반올림으로 가독성 확보)
       const rawDenom = metersPerPixel * 3779.527559;
       let roundedDenom;
       if (rawDenom >= 100000) {
@@ -616,11 +688,10 @@
         ratioEl.innerText = `축척 1 : ${Math.max(100, roundedDenom).toLocaleString()}`;
       }
 
-      // 축척 막대 길이(최대 90px 기준) 및 거리 텍스트 계산
       const maxBarPx = 85;
       const maxMeters = metersPerPixel * maxBarPx;
       const niceMeters = getNiceRoundNumber(maxMeters);
-      const barWidthPx = Math.max(24, Math.round(niceMeters / metersPerPixel));
+      const barWidthPx = Math.max(24, Math.min(110, Math.round(niceMeters / metersPerPixel)));
 
       const barEl = document.getElementById('scaleBarLine');
       const distEl = document.getElementById('scaleDistText');
@@ -787,8 +858,11 @@
       clearLosOverlay();
       if (markerA) map.removeLayer(markerA);
       aCoord = latlng;
-      const fullMgrs = mgrs.forward([latlng.lng, latlng.lat]);
-      fillMgrsSplits('a', fullMgrs);
+      try {
+        if (typeof mgrs !== 'undefined' && mgrs.forward) {
+          fillMgrsSplits('a', mgrs.forward([latlng.lng, latlng.lat]));
+        }
+      } catch (e) {}
       markerA = L.circleMarker(latlng, {radius:6, color:'red', weight:2, fillOpacity:1}).addTo(map);
     }
 
@@ -796,13 +870,16 @@
       clearLosOverlay();
       if (markerB) map.removeLayer(markerB);
       bCoord = latlng;
-      const fullMgrs = mgrs.forward([latlng.lng, latlng.lat]);
-      fillMgrsSplits('b', fullMgrs);
+      try {
+        if (typeof mgrs !== 'undefined' && mgrs.forward) {
+          fillMgrsSplits('b', mgrs.forward([latlng.lng, latlng.lat]));
+        }
+      } catch (e) {}
       markerB = L.circleMarker(latlng, {radius:6, color:'blue', weight:2, fillOpacity:1}).addTo(map);
     }
 
-    document.getElementById('setA').onclick = () => mode = 'A';
-    document.getElementById('setB').onclick = () => mode = 'B';
+    document.getElementById('setA').onclick = () => { mode = 'A'; showToast("지도에서 A지점 위치를 터치하세요."); };
+    document.getElementById('setB').onclick = () => { mode = 'B'; showToast("지도에서 B지점 위치를 터치하세요."); };
     document.getElementById('clearA').onclick = () => {
       clearLosOverlay();
       if(markerA) { map.removeLayer(markerA); markerA = null; }
@@ -841,7 +918,7 @@
         updateA(L.latLng(d[1], d[0]));
         map.setView([d[1], d[0]], 14);
       } catch(e) {
-        alert("A지점 MGRS 입력 형식 오류 (예: 52S CH 12345 67890)");
+        showToast("A지점 MGRS 입력 형식 오류 (예: 52SCH1234567890)");
       }
     };
 
@@ -861,12 +938,12 @@
         updateB(L.latLng(d[1], d[0]));
         map.setView([d[1], d[0]], 14);
       } catch(e) {
-        alert("B지점 MGRS 입력 형식 오류 (예: 52S CH 12345 67890)");
+        showToast("B지점 MGRS 입력 형식 오류 (예: 52SCH1234567890)");
       }
     };
 
     document.getElementById('myGps').onclick = () => {
-      if (!navigator.geolocation) return alert("GPS 미지원");
+      if (!navigator.geolocation) return showToast("이 기기에서는 GPS를 지원하지 않습니다.");
       const isLocalFile = window.location.protocol === 'file:' || window.location.protocol === 'content:';
       const btnGps = document.getElementById('myGps');
       btnGps.innerText = "위성 신호 수신 중...";
@@ -882,14 +959,24 @@
         },
         () => {
           btnGps.innerText = "내 GPS 위치 찾기";
-          alert(isLocalFile ? "로컬 파일 환경에서는 GPS가 차단됩니다." : "GPS 수신 실패");
+          showToast(isLocalFile ? "로컬 파일 환경에서는 GPS가 차단됩니다." : "GPS 수신에 실패했습니다.");
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     };
 
-    document.getElementById('gpsToA').onclick = () => { if (gpsCoord) { updateA(gpsCoord); alert("현재 GPS 위치가 Point A로 지정되었습니다."); } };
-    document.getElementById('gpsToB').onclick = () => { if (gpsCoord) { updateB(gpsCoord); alert("현재 GPS 위치가 Point B로 지정되었습니다."); } };
+    document.getElementById('gpsToA').onclick = () => {
+      if (gpsCoord) {
+        updateA(gpsCoord);
+        showToast("현재 GPS 위치가 Point A로 지정되었습니다.");
+      }
+    };
+    document.getElementById('gpsToB').onclick = () => {
+      if (gpsCoord) {
+        updateB(gpsCoord);
+        showToast("현재 GPS 위치가 Point B로 지정되었습니다.");
+      }
+    };
     document.getElementById('clearGps').onclick = () => {
       if (markerGps) { map.removeLayer(markerGps); markerGps = null; }
       gpsCoord = null;
@@ -919,7 +1006,7 @@
           ctx.drawImage(img, 0, 0);
           try { resolve(ctx.getImageData(0, 0, 256, 256).data); } catch (e) { reject(e); }
         };
-        img.onerror = () => reject(new Error(`Tile load failed`));
+        img.onerror = () => reject(new Error("Tile load failed"));
         img.src = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`;
       });
       tileCache.set(key, promise);
@@ -945,7 +1032,7 @@
     }
 
     document.getElementById('checkLOS').onclick = async () => {
-      if (!aCoord || !bCoord) return alert("A지점과 B지점을 먼저 지정하세요.");
+      if (!aCoord || !bCoord) return showToast("A지점과 B지점을 먼저 지정하세요.");
       isCancelled = false;
       const overlay = document.getElementById('loading-overlay');
       overlay.style.display = 'flex';
@@ -975,7 +1062,7 @@
 
         drawProfile();
       } catch(err) {
-        if (!isCancelled) alert("데이터 수신 실패");
+        if (!isCancelled) showToast("고도 데이터 수신에 실패했습니다.");
         overlay.style.display = 'none';
       }
     };
@@ -1009,7 +1096,6 @@
 
       ctx.clearRect(0, 0, W, H);
 
-      // 1. 지형 배경
       ctx.beginPath();
       ctx.fillStyle = "rgba(40, 167, 69, 0.18)";
       curvedElevations.forEach((e, i) => {
@@ -1020,7 +1106,6 @@
       ctx.lineTo(W, H); ctx.lineTo(0, H);
       ctx.fill();
 
-      // 2. 지형 선
       ctx.beginPath();
       ctx.strokeStyle = "#2e7d32";
       ctx.lineWidth = 2.5;
@@ -1031,7 +1116,6 @@
       });
       ctx.stroke();
 
-      // 3. 10m 안테나 마스트 및 가시선(LOS) 계산
       const antennaHeight = 10;
       const curvedElevA_Antenna = curvedElevations[0] + antennaHeight;
       const curvedElevB_Antenna = curvedElevations[N - 1] + antennaHeight;
@@ -1068,7 +1152,6 @@
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // A지점 및 B지점 마커 (10m 안테나 상단)
       ctx.beginPath();
       ctx.fillStyle = "red";
       ctx.arc(0, antennaStartY, 6, 0, 2 * Math.PI);
@@ -1104,7 +1187,6 @@
         const terrainY = H - ((curvedElevations[activeIndex] - minE) / range) * (H - 40) - 20;
         const xPos = (activeIndex / (N - 1)) * W;
 
-        // C지점 수직선 및 마커
         ctx.beginPath();
         ctx.strokeStyle = "#ff9800";
         ctx.lineWidth = 2;
@@ -1120,7 +1202,6 @@
         ctx.lineWidth = 2;
         ctx.stroke();
 
-        // 캔버스 위 C지점 라벨 표시
         ctx.font = "bold 20px sans-serif";
         ctx.fillStyle = "#e65100";
         const labelText = "C지점";
@@ -1136,7 +1217,6 @@
           pointMgrs = "좌표 계산 불가";
         }
 
-        // A -> C 구간 차폐 여부 검사 (A안테나 탑에서 C지점 지형까지)
         let blockedFromA = false;
         if (activeIndex > 0) {
           const antennaA_Y = antennaStartY;
@@ -1149,7 +1229,6 @@
           }
         }
 
-        // C -> B 구간 차폐 여부 검사 (C지점 지형에서 B안테나 탑까지)
         let blockedFromB = false;
         if (activeIndex < N - 1) {
           const startIdx = activeIndex;
@@ -1209,7 +1288,10 @@
     canvas.addEventListener('touchstart', (e) => { isDraggingCanvas = true; handleCanvasPointer(e); e.preventDefault(); }, { passive: false });
     window.addEventListener('touchmove', (e) => { if (isDraggingCanvas) { handleCanvasPointer(e); e.preventDefault(); } }, { passive: false });
     window.addEventListener('touchend', () => { isDraggingCanvas = false; });
-  };
+  }
+
+  window.addEventListener('load', initDohaLosApp);
+  document.addEventListener('DOMContentLoaded', initDohaLosApp);
 </script>
 </body>
 </html>
