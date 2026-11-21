@@ -18,7 +18,44 @@
       baseTotalOffset: 32, // Total 접속자 증가
 
       initialMgrs: "52SCG2952092460", // 시작할 지점의 MGRS 좌표
-      initialScaleRatio: 1080000 // 초기실행 지도 축적
+      initialScaleRatio: 1080000, // 초기실행 지도 축적
+
+      manualTitle: "Doha LoS 사용설명서", // 사용설명서 상단 제목
+      manualInquiry: "오류 신고 및 문의 : 중사 임도현(a21-509289@mnd.mil)", // 사용설명서 제목 옆 안내/문의 문구
+      manualItems: [ // 사용설명서 항목 (제목/설명 자유 수정 가능)
+        {
+          title: "1. 이 앱은 무엇을 하는 앱인가요?",
+          desc: "지도에서 두 지점(Point A, B)을 고른 뒤, 중간에 산이나 언덕에 가려 서로 잘 보이고 전파가 잘 통하는지(가시선, LOS) 미리 살펴보는 앱이에요."
+        },
+        {
+          title: "2. 지도 이동, 확대·축소하기",
+          desc: "손가락으로 지도를 밀어서 이동할 수 있어요.\n두 손가락으로 벌리거나 오므려서 확대·축소할 수 있어요.\n화면 오른쪽 아래의 '+'와 '−' 버튼을 눌러도 확대·축소돼요.\n그 아래 막대로 지금 지도의 축척(비율과 실제 거리)을 볼 수 있어요."
+        },
+        {
+          title: "3. Point A(시작점)와 Point B(도착점) 정하기",
+          desc: "• 지도로 찍기: 'A 찍기' 또는 'B 찍기' 버튼을 누른 뒤, 지도에서 원하는 곳을 손가락으로 터치하세요.\n• 좌표로 이동하기: MGRS 좌표를 칸마다 나누어 적거나, '한줄 입력'을 눌러 한 줄로 적은 뒤 'A로 이동' 또는 'B로 이동'을 누르세요.\n• 지우기: 잘못 찍었거나 지우고 싶을 때는 '해제' 버튼을 누르세요."
+        },
+        {
+          title: "4. 내 GPS 위치 사용하기",
+          desc: "'내 GPS 위치 찾기' 버튼을 누르면 지금 내가 서 있는 곳에 노란 표시가 뜨고 지도가 그쪽으로 이동해요.\n이어서 'GPS → A 지정' 또는 'GPS → B 지정'을 누르면 내 위치를 A나 B로 바로 쓸 수 있어요.\n'GPS 수신 해제'를 누르면 GPS 표시를 끌 수 있어요."
+        },
+        {
+          title: "5. 한국어 도로·지명 켜고 끄기",
+          desc: "'한국어 도로/지명: ON' 버튼을 누르면 도로 이름이나 지명 글자를 켰다 끌 수 있어요.\n위성 사진만 깔끔하게 보고 싶을 때 'OFF'로 바꾸면 좋아요."
+        },
+        {
+          title: "6. 정밀 단면 분석(지형에 가리는지 확인하기)",
+          desc: "A지점과 B지점을 모두 정한 뒤 빨간색 '정밀 단면 분석 (DEM 직독)' 버튼을 누르세요.\n잠시 기다리면 아래에 땅의 높낮이 그래프가 떠요.\n10m 높이 안테나 기준으로 길이 뚫렸는지('통신/시계 확보'), 지형에 막혔는지('시계 차폐') 알려줘요."
+        },
+        {
+          title: "7. 그래프를 터치해서 중간 지점(C지점) 살펴보기",
+          desc: "분석 결과 그래프 위를 손가락으로 터치하거나 좌우로 끌어보세요.\n내가 고른 중간 위치가 주황색 'C지점'으로 표시돼요.\n그곳의 높이(m), MGRS 좌표, A·B에서 얼마나 떨어졌는지, 중간에 지형에 가리는지 보여줘요.\n다 본 뒤에는 'C지점 해제'나 '✕' 버튼으로 닫을 수 있어요."
+        },
+        {
+          title: "8. 제어판 크기 조절하기",
+          desc: "왼쪽 메뉴 상자의 오른쪽 아래 모서리 대각선 줄무늬 부분을 잡고 끌어보세요.\n내 화면에 맞게 메뉴 크기를 작게 하거나 크게 조절할 수 있어요."
+        }
+      ]
     };
     document.title = APP_CONFIG.appName;
   </script>
@@ -275,6 +312,126 @@
       background: #ffe0b2;
     }
 
+    /* 제어판 최상단 앱 타이틀 및 사용설명서 버튼 */
+    .app-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 4px;
+      margin-bottom: 8px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    .app-main-title {
+      font-size: 13px;
+      font-weight: 800;
+      color: #111;
+      letter-spacing: -0.3px;
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .btn-manual {
+      padding: 3px 6px;
+      font-size: 9px;
+      font-weight: 700;
+      background: #eef4ff;
+      color: #0b57d0;
+      border: 1px solid #8ab4f8;
+      border-radius: 4px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .btn-manual:active {
+      background: #d2e3fc;
+    }
+
+    /* 지도 상단 사용설명서 오버레이 창 (헤더 고정 + 내용 스크롤) */
+    #manual-panel {
+      display: none;
+      position: fixed;
+      top: 44px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 95%;
+      max-width: 780px;
+      max-height: 56vh;
+      overflow: hidden;
+      flex-direction: column;
+      background: rgba(255, 255, 255, 0.97);
+      z-index: 2500;
+      border-radius: 10px;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.42);
+      padding: 12px 14px;
+      box-sizing: border-box;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      border: 1px solid rgba(0, 0, 0, 0.14);
+    }
+    .manual-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      padding-bottom: 6px;
+      margin-bottom: 8px;
+      border-bottom: 1px solid #e5e7eb;
+      flex-shrink: 0;
+    }
+    .manual-header-left {
+      display: flex;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .manual-title-text {
+      font-size: 13px;
+      font-weight: 800;
+      color: #111827;
+    }
+    .manual-inquiry-text {
+      font-size: 10.5px;
+      color: #334155;
+      line-height: 1.45;
+      white-space: pre-line;
+    }
+    .manual-close-btn {
+      border: none;
+      background: none;
+      font-size: 17px;
+      line-height: 1;
+      padding: 2px 4px;
+      color: #4b5563;
+      cursor: pointer;
+    }
+    .manual-list {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      overflow-y: auto;
+      flex: 1;
+      min-height: 0;
+      padding-right: 2px;
+    }
+    .manual-card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 7px 9px;
+    }
+    .manual-card-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 2px;
+    }
+    .manual-card-desc {
+      font-size: 10.5px;
+      color: #334155;
+      line-height: 1.45;
+      white-space: pre-line;
+    }
+
     /* 알림 메시지 배너 (alert 대체) */
     .toast-banner {
       display: none;
@@ -310,6 +467,10 @@
 
 <div class="control-wrapper" id="controlWrapper">
   <div class="control-box" id="controlBox">
+    <div class="app-header-row">
+      <div class="app-main-title" id="appMainTitle">Doha LoS</div>
+      <button type="button" id="openManualBtn" class="btn-manual">사용설명서</button>
+    </div>
     <div class="input-group">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:3px;">
         <strong style="margin-bottom:0;">Point A (MGRS 입력)</strong>
@@ -366,6 +527,18 @@
 <div id="map"></div>
 <div class="visitor-badge-float" id="visitorMapText">Today <b>-</b> &nbsp;·&nbsp; Total <b>-</b></div>
 
+<!-- 지도 상단 사용설명서 패널 -->
+<div id="manual-panel">
+  <div class="manual-header">
+    <div class="manual-header-left">
+      <div class="manual-title-text" id="manualPanelTitle">사용설명서</div>
+      <div class="manual-inquiry-text" id="manualPanelInquiry"></div>
+    </div>
+    <button type="button" id="closeManualBtn" class="manual-close-btn" title="닫기">✕</button>
+  </div>
+  <div class="manual-list" id="manualContentList"></div>
+</div>
+
 <!-- 지도 우측 하단 + / - 버튼 및 실시간 축척 표시 영역 -->
 <div class="map-bottom-right-controls">
   <div class="zoom-btn-group">
@@ -421,6 +594,7 @@
 <script>
   let closeProfilePopup;
   let clearPointC;
+  let toggleManualPanel;
   let toastTimer = null;
 
   // 화면 상단 안내 배너 표시 함수
@@ -584,10 +758,56 @@
 
     // 최상단 APP_CONFIG.appName만 페이지 제목에 반영
     document.title = APP_CONFIG.appName;
+    const mainTitleEl = document.getElementById('appMainTitle');
+    if (mainTitleEl) {
+      mainTitleEl.innerText = `${APP_CONFIG.appName} (${APP_CONFIG.version})`;
+    }
+
+    // APP_CONFIG 기반 사용설명서 렌더링 및 토글 설정
+    const manualPanel = document.getElementById('manual-panel');
+    const manualTitleEl = document.getElementById('manualPanelTitle');
+    const manualInquiryEl = document.getElementById('manualPanelInquiry');
+    const manualListEl = document.getElementById('manualContentList');
+    if (manualTitleEl) {
+      manualTitleEl.innerText = APP_CONFIG.manualTitle || `${APP_CONFIG.appName} 사용설명서`;
+    }
+    if (manualInquiryEl) {
+      manualInquiryEl.innerText = APP_CONFIG.manualInquiry || '';
+    }
+    if (manualListEl) {
+      const items = Array.isArray(APP_CONFIG.manualItems) ? APP_CONFIG.manualItems : [];
+      manualListEl.innerHTML = items.map((item) => `
+        <div class="manual-card">
+          <div class="manual-card-title">${item.title || ''}</div>
+          <div class="manual-card-desc">${item.desc || ''}</div>
+        </div>
+      `).join('');
+    }
+    toggleManualPanel = function(forceOpen = null) {
+      if (!manualPanel) return;
+      const isVisible = manualPanel.style.display === 'flex';
+      const nextOpen = forceOpen !== null ? forceOpen : !isVisible;
+      manualPanel.style.display = nextOpen ? 'flex' : 'none';
+    };
+    const openManualBtn = document.getElementById('openManualBtn');
+    const closeManualBtn = document.getElementById('closeManualBtn');
+    if (openManualBtn) {
+      openManualBtn.onclick = (e) => {
+        e.stopPropagation();
+        toggleManualPanel();
+      };
+    }
+    if (closeManualBtn) {
+      closeManualBtn.onclick = (e) => {
+        e.stopPropagation();
+        toggleManualPanel(false);
+      };
+    }
+
     const sigEl = document.getElementById('appSignature');
     if (sigEl) {
       sigEl.innerHTML =
-        `${APP_CONFIG.appName} (${APP_CONFIG.version}) · Last Update: ${APP_CONFIG.lastUpdate}<br>` +
+        `Last Update: ${APP_CONFIG.lastUpdate}<br>` +
         `${APP_CONFIG.author}<br>${APP_CONFIG.notice}`;
     }
 
