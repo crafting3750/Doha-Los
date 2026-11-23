@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -11,11 +12,11 @@
   <script>
     const APP_CONFIG = {
       appName: "Doha LoS", // 앱 타이틀 명
-      version: "v4.15", // 앱 버전
-      // lastUpdate: "2026.11.21.", // 업데이트 날짜
+      version: "v4.17", // 앱 버전
+      // lastUpdate: "2026.11.23.", // 업데이트 날짜
       author: "제 8기동사단 60기계화보병여단 전송반장 중사 임도현", // 제작자
       notice: "Copyright © 2024-2026. All rights reserved.", // 제작기간, 저작권 표기
-      baseTotalOffset: 32, // Total 접속자 증가
+      baseTotalOffset: 231, // Total 접속자 증가
 
       initialMgrs: "52SCG2952092460", // 시작할 지점의 MGRS 좌표
       initialScaleRatio: 1080000, // 초기실행 지도 축적
@@ -23,6 +24,12 @@
       updateHistoryTitle: "Doha LoS 패치노트", // 패치노트 창 상단 제목
       updateHistoryInquiry: "오류 신고 및 문의 : 중사 임도현(a21-509289@mnd.mil)", // 패치노트 제목 옆 안내/문의 문구
       updateHistoryItems: [ // 패치노트 (날짜/시간/버전/내용 자유 수정 가능)
+        {
+          date: "2026.11.23.",
+          time: "12:30",
+          version: "v4.17",
+          desc: "• 초기 실행 시 백그라운드 리소스 선행 처리 및 화면 초기화 응답 속도 개선\n• 네트워크 지연 및 외부 데이터 수신 예외 상황에 대한 타임아웃·방어 로직 보강\n• 브라우저 환경별 실행 안정성 점검 및 UI·동작 오류 수정"
+        },
         {
           date: "2026.11.21.",
           time: "12:40",
@@ -129,6 +136,55 @@
       ]
     };
     document.title = APP_CONFIG.appName;
+
+    // [최적화] 페이지 파싱 즉시 백그라운드에서 접속자 수 API 선요청 시작 (지도 로딩 대기 X)
+    (function prewarmVisitorStats() {
+      const now = new Date();
+      const todayStr = `${now.getFullYear()}_${String(now.getMonth() + 1).padStart(2, '0')}_${String(now.getDate()).padStart(2, '0')}`;
+      const totalKey = 'doha_los_prod_total';
+      const todayKey = `doha_los_prod_today_${todayStr}`;
+
+      function fetchWithTimeout(url, ms) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), ms);
+        return fetch(url, { method: 'GET', cache: 'no-store', signal: controller.signal })
+          .finally(() => clearTimeout(timer));
+      }
+
+      async function fastHitKey(key) {
+        const safeKey = encodeURIComponent(key);
+        try {
+          const res = await fetchWithTimeout(`https://countapi.mileshilliard.com/api/v1/hit/${safeKey}`, 2800);
+          if (res.ok) {
+            const data = await res.json();
+            const num = Number(data?.value);
+            if (!Number.isNaN(num) && num >= 0) return num;
+          }
+        } catch (e) {
+          // JSON 응답 지연/실패 시 shield SVG fallback 즉시 시도
+        }
+
+        try {
+          const svgRes = await fetchWithTimeout(`https://countapi.mileshilliard.com/api/v1/hit/${safeKey}/shield?text=hits`, 2800);
+          if (svgRes.ok) {
+            const svgText = await svgRes.text();
+            const matches = Array.from(svgText.matchAll(/>([0-9,]+)</g));
+            if (matches.length > 0) {
+              const lastNum = Number(matches[matches.length - 1][1].replace(/,/g, ''));
+              if (!Number.isNaN(lastNum) && lastNum >= 0) return lastNum;
+            }
+          }
+        } catch (e) {
+          // 네트워크 오류 시 null 반환
+        }
+        return null;
+      }
+
+      window.__visitorStatsPromise = Promise.all([
+        fastHitKey(totalKey),
+        fastHitKey(todayKey)
+      ]);
+    })();
   </script>
   <!-- ===== -->
 
@@ -761,14 +817,17 @@
     return `${y}-${m}-${d}`;
   }
 
-  // CountAPI(/api/v1/hit/{key})로 중앙 카운트 증가 및 조회
+  // CountAPI(/api/v1/hit/{key})로 중앙 카운트 증가 및 조회 (타임아웃 적용)
   async function hitCounterKey(key) {
     const safeKey = encodeURIComponent(key);
     try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 2800);
       const res = await fetch(`https://countapi.mileshilliard.com/api/v1/hit/${safeKey}`, {
         method: 'GET',
-        cache: 'no-store'
-      });
+        cache: 'no-store',
+        signal: controller.signal
+      }).finally(() => clearTimeout(timer));
       if (res.ok) {
         const data = await res.json();
         const num = Number(data?.value);
@@ -781,10 +840,12 @@
     }
 
     try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 2800);
       const svgRes = await fetch(
         `https://countapi.mileshilliard.com/api/v1/hit/${safeKey}/shield?text=hits`,
-        { method: 'GET', cache: 'no-store' }
-      );
+        { method: 'GET', cache: 'no-store', signal: controller.signal }
+      ).finally(() => clearTimeout(timer));
       if (svgRes.ok) {
         const svgText = await svgRes.text();
         const matches = Array.from(svgText.matchAll(/>([0-9,]+)</g));
@@ -802,8 +863,11 @@
     return null;
   }
 
-  // Today / Total 방문자 숫자 표시 (고정 키 중앙 집계 + 보정값 적용)
+  // Today / Total 방문자 숫자 표시 (즉시 캐시/기본값 렌더링 + 선요청 결과 반영)
   async function loadVisitorStats() {
+    if (window.__visitorStatsApplied) return;
+    window.__visitorStatsApplied = true;
+
     const mapText = document.getElementById('visitorMapText');
     const todayStr = getTodayKey().replace(/-/g, '_');
     const totalKey = 'doha_los_prod_total';
@@ -819,14 +883,19 @@
       // 스토리지 접근 제한 환경 무시
     }
 
-    let finalToday = cachedToday > 0 ? cachedToday : null;
-    let finalTotal = cachedTotal > 0 ? cachedTotal + baseOffset : null;
+    // 1단계: 캐시 또는 최소 기본값을 0ms 만에 즉시 표시 ('-' 상태 방지)
+    let finalToday = cachedToday > 0 ? cachedToday : 1;
+    let finalTotal = cachedTotal > 0 ? cachedTotal + baseOffset : Math.max(1, baseOffset + 1);
 
+    if (mapText) {
+      mapText.innerHTML = `Today <b>${finalToday.toLocaleString()}</b> &nbsp;·&nbsp; Total <b>${finalTotal.toLocaleString()}</b>`;
+    }
+
+    // 2단계: <head>에서 미리 시작한 API 응답이 도착하면 최신 숫자로 즉시 갱신
     try {
-      const [remoteTotal, remoteToday] = await Promise.all([
-        hitCounterKey(totalKey),
-        hitCounterKey(todayKey)
-      ]);
+      const [remoteTotal, remoteToday] = window.__visitorStatsPromise
+        ? await window.__visitorStatsPromise
+        : await Promise.all([hitCounterKey(totalKey), hitCounterKey(todayKey)]);
 
       if (remoteTotal !== null && remoteTotal > 0) {
         try { localStorage.setItem(`${totalKey}_cache`, String(remoteTotal)); } catch (e) {}
@@ -837,14 +906,12 @@
         finalToday = remoteToday;
         try { localStorage.setItem(`${todayKey}_cache`, String(finalToday)); } catch (e) {}
       }
-    } catch (e) {
-      // 네트워크 오류 시 캐시 유지
-    }
 
-    if (mapText) {
-      const todayDisplay = finalToday !== null ? finalToday.toLocaleString() : '-';
-      const totalDisplay = finalTotal !== null ? finalTotal.toLocaleString() : '-';
-      mapText.innerHTML = `Today <b>${todayDisplay}</b> &nbsp;·&nbsp; Total <b>${totalDisplay}</b>`;
+      if (mapText) {
+        mapText.innerHTML = `Today <b>${finalToday.toLocaleString()}</b> &nbsp;·&nbsp; Total <b>${finalTotal.toLocaleString()}</b>`;
+      }
+    } catch (e) {
+      // 네트워크 오류 시 즉시 렌더링된 값 유지
     }
   }
 
@@ -962,13 +1029,6 @@
         toggleManualPanel(false);
       };
     }
-
-//    const sigEl = document.getElementById('appSignature');
-//    if (sigEl) {
-//      sigEl.innerHTML =
-//        `Last Update: ${APP_CONFIG.lastUpdate}<br>` +
-//        `${APP_CONFIG.author}<br>${APP_CONFIG.notice}`;
-//    }
 
     const sigEl = document.getElementById('appSignature');
     if (sigEl) {
@@ -1697,6 +1757,13 @@
     canvas.addEventListener('touchstart', (e) => { isDraggingCanvas = true; handleCanvasPointer(e); e.preventDefault(); }, { passive: false });
     window.addEventListener('touchmove', (e) => { if (isDraggingCanvas) { handleCanvasPointer(e); e.preventDefault(); } }, { passive: false });
     window.addEventListener('touchend', () => { isDraggingCanvas = false; });
+  }
+
+  // DOM이 준비되자마자 지도 로딩을 기다리지 않고 방문자 배지 즉시 표시
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', loadVisitorStats);
+  } else {
+    loadVisitorStats();
   }
 
   window.addEventListener('load', initDohaLosApp);
