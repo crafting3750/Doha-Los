@@ -12,7 +12,7 @@
   <script>
     const APP_CONFIG = {
       appName: "Doha LoS", // 앱 타이틀 명
-      version: "v4.17", // 앱 버전
+      version: "v4.18", // 앱 버전
       // lastUpdate: "2026.11.23.", // 업데이트 날짜
       author: "제 8기동사단 60기계화보병여단 전송반장 중사 임도현", // 제작자
       notice: "Copyright © 2024-2026. All rights reserved.", // 제작기간, 저작권 표기
@@ -27,8 +27,8 @@
         {
           date: "2026.11.23.",
           time: "12:30",
-          version: "v4.17",
-          desc: "• 초기 실행 시 백그라운드 리소스 선행 처리 및 화면 초기화 응답 속도 개선\n• 네트워크 지연 및 외부 데이터 수신 예외 상황에 대한 타임아웃·방어 로직 보강\n• 브라우저 환경별 실행 안정성 점검 및 UI·동작 오류 수정"
+          version: "v4.18",
+          desc: "• 초기 실행 시 백그라운드 리소스 선행 처리 및 화면 초기화 응답 속도 개선\n• 네트워크 지연 및 외부 데이터 수신 예외 상황에 대한 타임아웃·방어 로직 보강\n• 브라우저 환경별 실행 안정성 점검 및 자잘한 UI·동작 오류 수정"
         },
         {
           date: "2026.11.21.",
@@ -137,10 +137,18 @@
     };
     document.title = APP_CONFIG.appName;
 
-    // [최적화] 페이지 파싱 즉시 백그라운드에서 접속자 수 API 선요청 시작 (지도 로딩 대기 X)
+    // 한국 표준시(KST, UTC+9) 기준 YYYY_MM_DD 날짜 키 생성 (모든 기기·브라우저 통일)
+    function getKstTodayUnderscoreKey() {
+      const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
+      const y = kstNow.getUTCFullYear();
+      const m = String(kstNow.getUTCMonth() + 1).padStart(2, '0');
+      const d = String(kstNow.getUTCDate()).padStart(2, '0');
+      return `${y}_${m}_${d}`;
+    }
+
+    // 페이지 파싱 즉시 백그라운드에서 중앙 카운터 API 선요청 시작 (다중 시도 + 자동 재시도)
     (function prewarmVisitorStats() {
-      const now = new Date();
-      const todayStr = `${now.getFullYear()}_${String(now.getMonth() + 1).padStart(2, '0')}_${String(now.getDate()).padStart(2, '0')}`;
+      const todayStr = getKstTodayUnderscoreKey();
       const totalKey = 'doha_los_prod_total';
       const todayKey = `doha_los_prod_today_${todayStr}`;
 
@@ -151,38 +159,54 @@
           .finally(() => clearTimeout(timer));
       }
 
-      async function fastHitKey(key) {
-        const safeKey = encodeURIComponent(key);
+      async function queryOnce(endpointUrl) {
+        const res = await fetchWithTimeout(endpointUrl, 5000);
+        if (!res.ok) return null;
+        const text = await res.text();
         try {
-          const res = await fetchWithTimeout(`https://countapi.mileshilliard.com/api/v1/hit/${safeKey}`, 2800);
-          if (res.ok) {
-            const data = await res.json();
-            const num = Number(data?.value);
-            if (!Number.isNaN(num) && num >= 0) return num;
-          }
+          const data = JSON.parse(text);
+          const num = Number(data?.value);
+          if (!Number.isNaN(num) && num >= 0) return num;
         } catch (e) {
-          // JSON 응답 지연/실패 시 shield SVG fallback 즉시 시도
-        }
-
-        try {
-          const svgRes = await fetchWithTimeout(`https://countapi.mileshilliard.com/api/v1/hit/${safeKey}/shield?text=hits`, 2800);
-          if (svgRes.ok) {
-            const svgText = await svgRes.text();
-            const matches = Array.from(svgText.matchAll(/>([0-9,]+)</g));
-            if (matches.length > 0) {
-              const lastNum = Number(matches[matches.length - 1][1].replace(/,/g, ''));
-              if (!Number.isNaN(lastNum) && lastNum >= 0) return lastNum;
-            }
+          const matches = Array.from(text.matchAll(/>([0-9,]+)</g));
+          if (matches.length > 0) {
+            const lastNum = Number(matches[matches.length - 1][1].replace(/,/g, ''));
+            if (!Number.isNaN(lastNum) && lastNum >= 0) return lastNum;
           }
-        } catch (e) {
-          // 네트워크 오류 시 null 반환
         }
         return null;
       }
 
+      async function reliableHitKey(key) {
+        const safeKey = encodeURIComponent(key);
+        const hitUrl = `https://countapi.mileshilliard.com/api/v1/hit/${safeKey}`;
+        const getUrl = `https://countapi.mileshilliard.com/api/v1/get/${safeKey}`;
+
+        // 1차 시도: 중앙 카운터 증가 및 조회
+        try {
+          const val1 = await queryOnce(hitUrl);
+          if (val1 !== null && val1 > 0) return val1;
+        } catch (e) {}
+
+        // 2차 재시도: 일시적 네트워크 지연 대응
+        await new Promise((r) => setTimeout(r, 400));
+        try {
+          const val2 = await queryOnce(hitUrl);
+          if (val2 !== null && val2 > 0) return val2;
+        } catch (e) {}
+
+        // 3차 보완: get 엔드포인트로 현재 서버 누적값 직접 조회
+        try {
+          const val3 = await queryOnce(getUrl);
+          if (val3 !== null && val3 > 0) return val3;
+        } catch (e) {}
+
+        return null;
+      }
+
       window.__visitorStatsPromise = Promise.all([
-        fastHitKey(totalKey),
-        fastHitKey(todayKey)
+        reliableHitKey(totalKey),
+        reliableHitKey(todayKey)
       ]);
     })();
   </script>
@@ -808,62 +832,40 @@
   document.addEventListener('gesturechange', function(e) { e.preventDefault(); }, { passive: false });
   document.addEventListener('gestureend', function(e) { e.preventDefault(); }, { passive: false });
 
-  // 오늘 날짜 키 생성 (로컬 기준 YYYY-MM-DD)
+  // 한국 표준시(KST, UTC+9) 기준 오늘 날짜 키 생성
   function getTodayKey() {
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, '0');
-    const d = String(now.getDate()).padStart(2, '0');
+    const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    const y = kstNow.getUTCFullYear();
+    const m = String(kstNow.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(kstNow.getUTCDate()).padStart(2, '0');
     return `${y}-${m}-${d}`;
   }
 
-  // CountAPI(/api/v1/hit/{key})로 중앙 카운트 증가 및 조회 (타임아웃 적용)
+  // CountAPI(/api/v1/hit/{key})로 중앙 카운트 증가 및 조회 (타임아웃 + get 보완)
   async function hitCounterKey(key) {
     const safeKey = encodeURIComponent(key);
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 2800);
-      const res = await fetch(`https://countapi.mileshilliard.com/api/v1/hit/${safeKey}`, {
-        method: 'GET',
-        cache: 'no-store',
-        signal: controller.signal
-      }).finally(() => clearTimeout(timer));
-      if (res.ok) {
-        const data = await res.json();
-        const num = Number(data?.value);
-        if (!Number.isNaN(num) && num >= 0) {
-          return num;
-        }
-      }
-    } catch (e) {
-      // JSON 응답 실패 시 shield SVG fallback 시도
-    }
-
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 2800);
-      const svgRes = await fetch(
-        `https://countapi.mileshilliard.com/api/v1/hit/${safeKey}/shield?text=hits`,
-        { method: 'GET', cache: 'no-store', signal: controller.signal }
-      ).finally(() => clearTimeout(timer));
-      if (svgRes.ok) {
-        const svgText = await svgRes.text();
-        const matches = Array.from(svgText.matchAll(/>([0-9,]+)</g));
-        if (matches.length > 0) {
-          const lastNum = Number(matches[matches.length - 1][1].replace(/,/g, ''));
-          if (!Number.isNaN(lastNum) && lastNum >= 0) {
-            return lastNum;
+    for (const endpoint of ['hit', 'get']) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 5000);
+        const res = await fetch(`https://countapi.mileshilliard.com/api/v1/${endpoint}/${safeKey}`, {
+          method: 'GET',
+          cache: 'no-store',
+          signal: controller.signal
+        }).finally(() => clearTimeout(timer));
+        if (res.ok) {
+          const data = await res.json();
+          const num = Number(data?.value);
+          if (!Number.isNaN(num) && num > 0) {
+            return num;
           }
         }
-      }
-    } catch (e) {
-      // 네트워크 오류 시 null 반환
+      } catch (e) {}
     }
-
     return null;
   }
 
-  // Today / Total 방문자 숫자 표시 (즉시 캐시/기본값 렌더링 + 선요청 결과 반영)
+  // Today / Total 방문자 숫자 표시 (모든 기기·브라우저 중앙 서버 동기화)
   async function loadVisitorStats() {
     if (window.__visitorStatsApplied) return;
     window.__visitorStatsApplied = true;
@@ -883,35 +885,41 @@
       // 스토리지 접근 제한 환경 무시
     }
 
-    // 1단계: 캐시 또는 최소 기본값을 0ms 만에 즉시 표시 ('-' 상태 방지)
-    let finalToday = cachedToday > 0 ? cachedToday : 1;
-    let finalTotal = cachedTotal > 0 ? cachedTotal + baseOffset : Math.max(1, baseOffset + 1);
+    // 기존 방문 기록이 있는 기기만 캐시를 즉시 띄우고, 새 기기는 서버 실제 값을 우선 대기 (1로 리셋 방지)
+    let finalToday = cachedToday > 0 ? cachedToday : null;
+    let finalTotal = cachedTotal > 0 ? cachedTotal + baseOffset : null;
 
-    if (mapText) {
-      mapText.innerHTML = `Today <b>${finalToday.toLocaleString()}</b> &nbsp;·&nbsp; Total <b>${finalTotal.toLocaleString()}</b>`;
+    if (mapText && (finalToday !== null || finalTotal !== null)) {
+      const tStr = finalToday !== null ? finalToday.toLocaleString() : '...';
+      const totStr = finalTotal !== null ? finalTotal.toLocaleString() : '...';
+      mapText.innerHTML = `Today <b>${tStr}</b> &nbsp;·&nbsp; Total <b>${totStr}</b>`;
     }
 
-    // 2단계: <head>에서 미리 시작한 API 응답이 도착하면 최신 숫자로 즉시 갱신
+    // 중앙 서버 응답 반영 (캐시보다 큰 실제 서버 값을 우선 사용)
     try {
       const [remoteTotal, remoteToday] = window.__visitorStatsPromise
         ? await window.__visitorStatsPromise
         : await Promise.all([hitCounterKey(totalKey), hitCounterKey(todayKey)]);
 
       if (remoteTotal !== null && remoteTotal > 0) {
-        try { localStorage.setItem(`${totalKey}_cache`, String(remoteTotal)); } catch (e) {}
-        finalTotal = remoteTotal + baseOffset;
+        const bestTotal = Math.max(remoteTotal, cachedTotal);
+        try { localStorage.setItem(`${totalKey}_cache`, String(bestTotal)); } catch (e) {}
+        finalTotal = bestTotal + baseOffset;
       }
 
       if (remoteToday !== null && remoteToday > 0) {
-        finalToday = remoteToday;
-        try { localStorage.setItem(`${todayKey}_cache`, String(finalToday)); } catch (e) {}
-      }
-
-      if (mapText) {
-        mapText.innerHTML = `Today <b>${finalToday.toLocaleString()}</b> &nbsp;·&nbsp; Total <b>${finalTotal.toLocaleString()}</b>`;
+        const bestToday = Math.max(remoteToday, cachedToday);
+        try { localStorage.setItem(`${todayKey}_cache`, String(bestToday)); } catch (e) {}
+        finalToday = bestToday;
       }
     } catch (e) {
-      // 네트워크 오류 시 즉시 렌더링된 값 유지
+      // 네트워크 오류 시 캐시 유지
+    }
+
+    if (mapText) {
+      const todayDisplay = finalToday !== null ? finalToday.toLocaleString() : '1';
+      const totalDisplay = finalTotal !== null ? finalTotal.toLocaleString() : String(Math.max(1, baseOffset + 1));
+      mapText.innerHTML = `Today <b>${todayDisplay}</b> &nbsp;·&nbsp; Total <b>${totalDisplay}</b>`;
     }
   }
 
