@@ -9,11 +9,10 @@
   <!-- ===== -->
   <!-- ★ [사용자 설정 영역] -->
   <!-- ===== -->
-  <script>
+  <script id="appConfigScript">
     const APP_CONFIG = {
       appName: "Doha LoS", // 앱 타이틀 명
-      version: "v4.18", // 앱 버전
-      // lastUpdate: "2026.11.23.", // 업데이트 날짜
+      version: "v4.19", // 앱 버전
       author: "제 8기동사단 60기계화보병여단 전송반장 중사 임도현", // 제작자
       notice: "Copyright © 2024-2026. All rights reserved.", // 제작기간, 저작권 표기
       baseTotalOffset: 231, // Total 접속자 증가
@@ -26,9 +25,9 @@
       updateHistoryItems: [ // 패치노트 (날짜/시간/버전/내용 자유 수정 가능)
         {
           date: "2026.11.23.",
-          time: "12:30",
-          version: "v4.18",
-          desc: "• 초기 실행 시 백그라운드 리소스 선행 처리 및 화면 초기화 응답 속도 개선\n• 네트워크 지연 및 외부 데이터 수신 예외 상황에 대한 타임아웃·방어 로직 보강\n• 브라우저 환경별 실행 안정성 점검 및 자잘한 UI·동작 오류 수정"
+          time: "12:48",
+          version: "v4.19",
+          desc: "• 초기 실행 시 백그라운드 리소스 선행 처리 및 화면 초기화 응답 속도 개선\n• 네트워크 지연 및 외부 데이터 수신 예외 상황에 대한 타임아웃·방어 로직 보강\n• 브라우저 환경별 실행 안정성 점검 및 UI·동작 오류 수정"
         },
         {
           date: "2026.11.21.",
@@ -95,9 +94,9 @@
           time: "",
           version: "alpha",
           desc: "• 모바일 호환 가시선(LoS) 지형 단면 분석 웹앱 Doha LoS 초기 구축"
-        },
+        }
       ],
-      
+
       manualTitle: "Doha LoS 사용설명서", // 사용설명서 상단 제목
       manualInquiry: "오류 신고 및 문의 : 중사 임도현(a21-509289@mnd.mil)", // 사용설명서 제목 옆 안내/문의 문구
       manualItems: [ // 사용설명서 항목 (제목/설명 자유 수정 가능)
@@ -721,7 +720,7 @@
 </div>
 
 <div id="map"></div>
-<div class="visitor-badge-float" id="visitorMapText">Today <b>-</b> &nbsp;·&nbsp; Total <b>-</b></div>
+<div class="visitor-badge-float" id="visitorMapText">Today <b>...</b> &nbsp;·&nbsp; Total <b>...</b></div>
 
 <!-- 지도 상단 사용설명서 / 패치노트 패널 -->
 <div id="manual-panel">
@@ -793,6 +792,38 @@
   let toggleManualPanel;
   let toastTimer = null;
 
+  // 사용자 설정(APP_CONFIG)이 누락되더라도 앱이 멈추지 않도록 기본값 보완
+  if (typeof window.APP_CONFIG === 'undefined' || !window.APP_CONFIG) {
+    window.APP_CONFIG = {
+      appName: "Doha LoS",
+      version: "v4.18",
+      author: "제 8기동사단 60기계화보병여단 전송반장 중사 임도현",
+      notice: "Copyright © 2024-2026. All rights reserved.",
+      baseTotalOffset: 32,
+      initialMgrs: "52SCG2952092460",
+      initialScaleRatio: 1080000,
+      manualTitle: "Doha LoS 사용설명서",
+      manualInquiry: "오류 신고 및 문의 : 중사 임도현(a21-509289@mnd.mil)",
+      updateHistoryTitle: "Doha LoS 패치노트",
+      updateHistoryInquiry: "오류 신고 및 문의 : 중사 임도현(a21-509289@mnd.mil)",
+      updateHistoryItems: [],
+      manualItems: []
+    };
+  }
+
+  function getSafeUpdateHistoryItems() {
+    const raw = APP_CONFIG.updateHistoryItems;
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .filter((item) => item && typeof item === 'object')
+      .map((item) => ({
+        version: String(item.version ?? ''),
+        date: String(item.date ?? ''),
+        time: String(item.time ?? ''),
+        desc: String(item.desc ?? '')
+      }));
+  }
+
   // 화면 상단 안내 배너 표시 함수
   function showToast(msg) {
     const el = document.getElementById('toastBanner');
@@ -827,7 +858,7 @@
     return L.latLng(centeredLat, centeredLng);
   }
 
-  // 브라우저 화면 자체의 핀치 줌(100% 고정 해제 시도) 차단
+  // 브라우저 화면 자체의 핀치 줌 차단
   document.addEventListener('gesturestart', function(e) { e.preventDefault(); }, { passive: false });
   document.addEventListener('gesturechange', function(e) { e.preventDefault(); }, { passive: false });
   document.addEventListener('gestureend', function(e) { e.preventDefault(); }, { passive: false });
@@ -865,7 +896,7 @@
     return null;
   }
 
-  // Today / Total 방문자 숫자 표시 (모든 기기·브라우저 중앙 서버 동기화)
+  // Today / Total 방문자 숫자 표시 (초기 상태는 'Today ... · Total ...'로 통일 후 서버 값 확정 시 한 번에 반영)
   async function loadVisitorStats() {
     if (window.__visitorStatsApplied) return;
     window.__visitorStatsApplied = true;
@@ -879,23 +910,19 @@
     let cachedTotal = 0;
     let cachedToday = 0;
     try {
-      cachedTotal = parseInt(localStorage.getItem(`${totalKey}_cache`) || '0', 10);
-      cachedToday = parseInt(localStorage.getItem(`${todayKey}_cache`) || '0', 10);
+      cachedTotal = parseInt(localStorage.getItem(`${totalKey}_cache`) || '0', 10) || 0;
+      cachedToday = parseInt(localStorage.getItem(`${todayKey}_cache`) || '0', 10) || 0;
     } catch (e) {
       // 스토리지 접근 제한 환경 무시
     }
 
-    // 기존 방문 기록이 있는 기기만 캐시를 즉시 띄우고, 새 기기는 서버 실제 값을 우선 대기 (1로 리셋 방지)
-    let finalToday = cachedToday > 0 ? cachedToday : null;
-    let finalTotal = cachedTotal > 0 ? cachedTotal + baseOffset : null;
-
-    if (mapText && (finalToday !== null || finalTotal !== null)) {
-      const tStr = finalToday !== null ? finalToday.toLocaleString() : '...';
-      const totStr = finalTotal !== null ? finalTotal.toLocaleString() : '...';
-      mapText.innerHTML = `Today <b>${tStr}</b> &nbsp;·&nbsp; Total <b>${totStr}</b>`;
+    if (mapText) {
+      mapText.innerHTML = `Today <b>...</b> &nbsp;·&nbsp; Total <b>...</b>`;
     }
 
-    // 중앙 서버 응답 반영 (캐시보다 큰 실제 서버 값을 우선 사용)
+    let finalToday = null;
+    let finalTotal = null;
+
     try {
       const [remoteTotal, remoteToday] = window.__visitorStatsPromise
         ? await window.__visitorStatsPromise
@@ -905,15 +932,20 @@
         const bestTotal = Math.max(remoteTotal, cachedTotal);
         try { localStorage.setItem(`${totalKey}_cache`, String(bestTotal)); } catch (e) {}
         finalTotal = bestTotal + baseOffset;
+      } else if (cachedTotal > 0) {
+        finalTotal = cachedTotal + baseOffset;
       }
 
       if (remoteToday !== null && remoteToday > 0) {
         const bestToday = Math.max(remoteToday, cachedToday);
         try { localStorage.setItem(`${todayKey}_cache`, String(bestToday)); } catch (e) {}
         finalToday = bestToday;
+      } else if (cachedToday > 0) {
+        finalToday = cachedToday;
       }
     } catch (e) {
-      // 네트워크 오류 시 캐시 유지
+      if (cachedTotal > 0) finalTotal = cachedTotal + baseOffset;
+      if (cachedToday > 0) finalToday = cachedToday;
     }
 
     if (mapText) {
@@ -947,14 +979,12 @@
     if (window.__dohaLosInitialized) return;
     window.__dohaLosInitialized = true;
 
-    // 최상단 APP_CONFIG.appName만 페이지 제목에 반영
     document.title = APP_CONFIG.appName;
     const mainTitleEl = document.getElementById('appMainTitle');
     if (mainTitleEl) {
       mainTitleEl.innerText = `${APP_CONFIG.appName} (${APP_CONFIG.version})`;
     }
 
-    // APP_CONFIG 기반 사용설명서 / 패치노트 렌더링 및 토글 설정
     const manualPanel = document.getElementById('manual-panel');
     const manualTitleEl = document.getElementById('manualPanelTitle');
     const manualInquiryEl = document.getElementById('manualPanelInquiry');
@@ -971,16 +1001,25 @@
           manualInquiryEl.innerText = APP_CONFIG.updateHistoryInquiry || APP_CONFIG.manualInquiry || '';
         }
         if (manualListEl) {
-          const historyItems = Array.isArray(APP_CONFIG.updateHistoryItems) ? APP_CONFIG.updateHistoryItems : [];
-          manualListEl.innerHTML = historyItems.map((item) => `
-            <div class="manual-card">
-              <div class="history-meta-row">
-                <span class="history-version-badge">${item.version || ''}</span>
-                <span class="history-datetime-text">${item.date || ''} ${item.time || ''}</span>
+          const historyItems = getSafeUpdateHistoryItems();
+          if (historyItems.length === 0) {
+            manualListEl.innerHTML = `
+              <div class="manual-card">
+                <div class="manual-card-title">등록된 패치노트가 없습니다.</div>
+                <div class="manual-card-desc">APP_CONFIG.updateHistoryItems 항목을 확인해 주세요.</div>
               </div>
-              <div class="manual-card-desc">${item.desc || ''}</div>
-            </div>
-          `).join('');
+            `;
+          } else {
+            manualListEl.innerHTML = historyItems.map((item) => `
+              <div class="manual-card">
+                <div class="history-meta-row">
+                  <span class="history-version-badge">${item.version}</span>
+                  <span class="history-datetime-text">${item.date} ${item.time}</span>
+                </div>
+                <div class="manual-card-desc">${item.desc}</div>
+              </div>
+            `).join('');
+          }
         }
       } else {
         if (manualTitleEl) {
@@ -1086,7 +1125,6 @@
     window.addEventListener('touchmove', (e) => { if (isResizing) { e.preventDefault(); if (e.touches.length === 1) onResizeMove(e.touches[0].clientX, e.touches[0].clientY); } }, { passive: false });
     window.addEventListener('touchend', onResizeEnd);
 
-    // APP_CONFIG.initialMgrs와 APP_CONFIG.initialScaleRatio로 시작 좌표 및 축척 계산
     let startLat = 37.9;
     let startLng = 127.0;
     try {
@@ -1100,9 +1138,7 @@
           }
         }
       }
-    } catch (e) {
-      // MGRS 파싱 오류 시 기본 좌표 유지
-    }
+    } catch (e) {}
 
     const targetScaleDenom = Number(APP_CONFIG.initialScaleRatio) || 1080000;
     const initialZoom = Math.round(scaleDenominatorToZoom(targetScaleDenom, startLat));
@@ -1139,7 +1175,6 @@
       map.invalidateSize();
     }, 100);
 
-    // 우측 하단 축척 막대 및 1 : OOO 축척 비율 실시간 업데이트
     function updateScaleIndicator() {
       const center = map.getCenter();
       const zoom = map.getZoom();
@@ -1179,7 +1214,6 @@
     map.on('zoom move', updateScaleIndicator);
     updateScaleIndicator();
 
-    // + / - 버튼 연타 시 쿨타임 없이 목표 줌 레벨 누적 및 자연스러운 애니메이션 전환
     let targetZoomLevel = map.getZoom();
     let isButtonZooming = false;
 
@@ -1250,7 +1284,6 @@
     let isSingleMgrsModeA = false;
     let isSingleMgrsModeB = false;
 
-    // Point A 입력 방식 전환 토글
     document.getElementById('toggleMgrsModeA').onclick = function() {
       isSingleMgrsModeA = !isSingleMgrsModeA;
       const aSplit = document.getElementById('aSplitContainer');
@@ -1270,7 +1303,6 @@
       }
     };
 
-    // Point B 입력 방식 전환 토글
     document.getElementById('toggleMgrsModeB').onclick = function() {
       isSingleMgrsModeB = !isSingleMgrsModeB;
       const bSplit = document.getElementById('bSplitContainer');
@@ -1767,7 +1799,6 @@
     window.addEventListener('touchend', () => { isDraggingCanvas = false; });
   }
 
-  // DOM이 준비되자마자 지도 로딩을 기다리지 않고 방문자 배지 즉시 표시
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', loadVisitorStats);
   } else {
